@@ -51,7 +51,7 @@ export default function DashboardOverviewPage() {
   const currentMonth = 'أكتوبر 2026';
   const monthSubs = data.subscriptions.filter((s) => s.month === currentMonth);
   const paidSubsCount = monthSubs.filter((s) => s.isPaid).length;
-  const totalSubRevenue = paidSubsCount * 150;
+  const totalSubRevenue = paidSubsCount * 250;
 
   const handleApprove = (student: Student) => {
     db.approveStudent(student.id);

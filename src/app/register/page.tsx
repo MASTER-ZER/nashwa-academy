@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/storage';
+import { notifyNewStudentRegistration } from '@/lib/telegram';
 import { Group } from '@/types';
 import confetti from 'canvas-confetti';
 import { UserCheck, Sparkles, AlertCircle, ArrowRight, Phone, User, MapPin, Clock } from 'lucide-react';
@@ -80,6 +81,9 @@ export default function RegisterPage() {
       academicYear: 'FIRST_SEC',
       groupId: formData.groupId,
     });
+
+    const selectedGroup = groups.find((g) => g.id === formData.groupId);
+    notifyNewStudentRegistration(student, selectedGroup).catch(() => {});
 
     setRegisteredCode(student.code);
     setIsSubmitted(true);

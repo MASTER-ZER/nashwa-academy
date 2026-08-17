@@ -40,13 +40,13 @@ export default function SubscriptionsDashboardPage() {
       isPaid: sub ? sub.isPaid : false,
       paidAt: sub?.paidAt,
       receivedBy: sub?.receivedBy,
-      amount: sub?.amount || 150,
+      amount: sub?.amount || 250,
     };
   });
 
   const paidCount = studentsWithSub.filter((s) => s.isPaid).length;
   const unpaidCount = studentsWithSub.filter((s) => !s.isPaid).length;
-  const totalCollected = paidCount * 150;
+  const totalCollected = paidCount * 250;
 
   const filteredList = studentsWithSub.filter(({ student, isPaid }) => {
     if (statusFilter === 'PAID' && !isPaid) return false;

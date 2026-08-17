@@ -433,7 +433,7 @@ class StorageService {
         id: `sub-${student.id}-${Date.now()}`,
         studentId: student.id,
         month: currentMonth,
-        amount: 150,
+        amount: 250,
         isPaid: false,
       };
       data.subscriptions.push(sub);
@@ -619,6 +619,70 @@ class StorageService {
     this.saveData(data);
   }
 
+  // --- Groups Management ---
+  public addGroup(group: Omit<Group, 'id'>): Group {
+    const data = this.getData();
+    const newGroup: Group = {
+      ...group,
+      id: `grp-${Date.now()}`,
+    };
+    data.groups.push(newGroup);
+    this.saveData(data);
+
+    if (supabase) {
+      supabase.from('groups').insert({
+        id: newGroup.id,
+        name: newGroup.name,
+        time: newGroup.time,
+        days: newGroup.days,
+        academic_year: newGroup.academicYear,
+        max_students: newGroup.maxStudents || 35,
+      }).then(({ error }) => {
+        if (error) console.error('Supabase addGroup error:', error);
+      });
+    }
+
+    return newGroup;
+  }
+
+  public updateGroup(groupId: string, updates: Partial<Group>): Group | null {
+    const data = this.getData();
+    const index = data.groups.findIndex((g) => g.id === groupId);
+    if (index === -1) return null;
+
+    data.groups[index] = { ...data.groups[index], ...updates };
+    this.saveData(data);
+
+    if (supabase) {
+      const g = data.groups[index];
+      supabase.from('groups').update({
+        name: g.name,
+        time: g.time,
+        days: g.days,
+        academic_year: g.academicYear,
+        max_students: g.maxStudents || 35,
+      }).eq('id', groupId).then(({ error }) => {
+        if (error) console.error('Supabase updateGroup error:', error);
+      });
+    }
+
+    return data.groups[index];
+  }
+
+  public deleteGroup(groupId: string): boolean {
+    const data = this.getData();
+    data.groups = data.groups.filter((g) => g.id !== groupId);
+    this.saveData(data);
+
+    if (supabase) {
+      supabase.from('groups').delete().eq('id', groupId).then(({ error }) => {
+        if (error) console.error('Supabase deleteGroup error:', error);
+      });
+    }
+
+    return true;
+  }
+
   // --- Subscriptions ---
   public toggleSubscription(studentId: string, month: string = 'أكتوبر 2026', receivedBy: string = 'مس نشوى'): boolean {
     const data = this.getData();
@@ -628,7 +692,7 @@ class StorageService {
         id: `sub-${studentId}-${Date.now()}`,
         studentId,
         month,
-        amount: 150,
+        amount: 250,
         isPaid: true,
         paidAt: new Date().toISOString(),
         receivedBy,

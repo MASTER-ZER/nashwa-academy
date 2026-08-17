@@ -83,7 +83,10 @@ export default function StudentPortalPage() {
     }
   }, [currentStudent, activeTab, cardDisplayType]);
 
-  const loadStudentData = (code: string) => {
+  const loadStudentData = async (code: string) => {
+    // 1. Sync from cloud first
+    await db.syncFromSupabase();
+
     const data = db.getData();
     const std = data.students.find((s) => s.code === code.trim());
     if (!std) {
@@ -116,17 +119,38 @@ export default function StudentPortalPage() {
     return true;
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  // Subscribe to real-time updates while on student portal
+  useEffect(() => {
+    const unsub = db.subscribe(() => {
+      const savedCode = localStorage.getItem('logged_student_code');
+      if (savedCode) {
+        const data = db.getData();
+        const std = data.students.find((s) => s.code === savedCode.trim());
+        if (std) {
+          const grp = data.groups.find((g) => g.id === std.groupId);
+          setGroup(grp || null);
+          const att = data.attendance.filter((a) => a.studentId === std.id);
+          setAttendance(att);
+          const subs = data.subscriptions.filter((s) => s.studentId === std.id);
+          setSubscriptions(subs);
+        }
+      }
+    });
+    return unsub;
+  }, []);
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!studentCode.trim()) {
       setErrorMsg('يرجى إدخال كود الطالب');
       return;
     }
 
+    await db.syncFromSupabase();
     const data = db.getData();
     const std = data.students.find((s) => s.code === studentCode.trim());
     if (!std) {
-      setErrorMsg('كود الطالب غير صحيح أو غير معتمد بعد');
+      setErrorMsg('كود الطالب غير صحيح أو بانتظار اعتماد المس');
       return;
     }
 
@@ -135,7 +159,7 @@ export default function StudentPortalPage() {
       return;
     }
 
-    loadStudentData(std.code);
+    await loadStudentData(std.code);
   };
 
   const handleLogout = () => {
@@ -153,7 +177,7 @@ export default function StudentPortalPage() {
     id: 'sub-temp',
     studentId: currentStudent?.id || '',
     month: 'أكتوبر 2026',
-    amount: 150,
+    amount: 250,
     isPaid: false,
   };
 

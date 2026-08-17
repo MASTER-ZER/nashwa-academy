@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { db } from '@/lib/storage';
 import { generateAbsenceWhatsAppUrl, generateStudentAbsenceWhatsAppUrl } from '@/lib/whatsapp';
 import { Student, Group, AttendanceRecord, SystemData } from '@/types';
-import { CalendarCheck, Users, UserX, MessageSquare, CheckCircle2, Phone, Clock, AlertTriangle } from 'lucide-react';
+import { CalendarCheck, Users, UserX, MessageSquare, CheckCircle2, Phone, Clock, AlertTriangle, PlusCircle, Check } from 'lucide-react';
 
 export default function AttendanceDashboardPage() {
   const [data, setData] = useState<SystemData | null>(null);
@@ -21,6 +21,7 @@ export default function AttendanceDashboardPage() {
   };
 
   useEffect(() => {
+    db.syncFromSupabase().then(() => loadData());
     loadData();
     const unsub = db.subscribe(loadData);
     return unsub;
@@ -41,6 +42,15 @@ export default function AttendanceDashboardPage() {
 
   const attendedStudents = groupStudents.filter((s) => attendedStudentIds.has(s.id));
   const absentStudents = groupStudents.filter((s) => !attendedStudentIds.has(s.id));
+
+  const handleManualAttend = (student: Student) => {
+    db.scanAttendance({
+      scannedCode: student.code,
+      activeGroupId: selectedGroupId,
+      deviceId: 'admin-manual',
+    });
+    loadData();
+  };
 
   const handleOpenParentWhatsApp = (student: Student) => {
     if (!selectedGroup) return;
@@ -71,24 +81,24 @@ export default function AttendanceDashboardPage() {
   return (
     <div className="space-y-6 py-2">
       {/* Header */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 flex items-center gap-2">
-            <CalendarCheck className="w-6 h-6 text-brand-600" />
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+            <CalendarCheck className="w-6 h-6 text-brand-600 dark:text-cyan-400" />
             كشف الحضور والغياب اليومي ({todayStr})
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             متابعة الحاضرين والغائبين لكل مجموعة مع إرسال إشعارات الواتساب لأولياء الأمور
           </p>
         </div>
 
         {/* Group Selector */}
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <label className="text-xs font-bold text-slate-600 whitespace-nowrap">المجموعة:</label>
+          <label className="text-xs font-bold text-slate-600 dark:text-slate-300 whitespace-nowrap">المجموعة:</label>
           <select
             value={selectedGroupId}
             onChange={(e) => setSelectedGroupId(e.target.value)}
-            className="w-full sm:w-72 px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 bg-slate-50 focus:border-brand-500 focus:outline-none"
+            className="w-full sm:w-72 px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:border-brand-500 focus:outline-none"
           >
             {data.groups.map((grp) => (
               <option key={grp.id} value={grp.id}>
@@ -99,136 +109,150 @@ export default function AttendanceDashboardPage() {
         </div>
       </div>
 
-      {/* Summary KPI Badges */}
-      <div className="grid grid-cols-3 gap-4 text-center">
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-          <span className="text-xs font-bold text-slate-500">إجمالي طلاب المجموعة</span>
-          <p className="text-2xl font-black text-slate-900">{groupStudents.length}</p>
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-cyan-400 flex items-center justify-center">
+            <Users className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="text-2xl font-black text-slate-900 dark:text-white">{groupStudents.length}</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-semibold">إجمالي طلاب المجموعة</div>
+          </div>
         </div>
 
-        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 shadow-xs">
-          <span className="text-xs font-bold text-emerald-800">الحاضرين اليوم</span>
-          <p className="text-2xl font-black text-emerald-700">{attendedStudents.length}</p>
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+            <CheckCircle2 className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{attendedStudents.length}</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
+              حاضر اليوم ({groupStudents.length > 0 ? Math.round((attendedStudents.length / groupStudents.length) * 100) : 0}%)
+            </div>
+          </div>
         </div>
 
-        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 shadow-xs">
-          <span className="text-xs font-bold text-rose-800">الغائبين اليوم</span>
-          <p className="text-2xl font-black text-rose-700">{absentStudents.length}</p>
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+            <UserX className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="text-2xl font-black text-rose-600 dark:text-rose-400">{absentStudents.length}</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-semibold">غائب اليوم بانتظار التواصل</div>
+          </div>
         </div>
       </div>
 
-      {/* Main Grid: Absent vs Attended Lists */}
+      {/* Tables Grid: Attended vs Absent */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Absent Students Section */}
-        <div className="bg-white border border-rose-200 rounded-3xl p-5 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-rose-900 flex items-center gap-1.5">
-              <UserX className="w-4 h-4 text-rose-600" />
-              الطلاب الغائبين عن حصة اليوم ({absentStudents.length})
+        {/* Attended Students List */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+            <h2 className="text-sm font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4" />
+              الطلاب الحاضرين ({attendedStudents.length})
             </h2>
-            <span className="text-[11px] text-slate-400">بانتظار إبلاغ أولياء الأمور</span>
+            <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">مسجلين عبر السكانر</span>
           </div>
 
-          {absentStudents.length === 0 ? (
-            <div className="text-center py-12 text-slate-400 space-y-1">
-              <CheckCircle2 className="w-8 h-8 mx-auto text-emerald-500" />
-              <p className="text-xs font-bold text-emerald-700">ممتاز! نسبة الحضور 100% لا يوجد غياب اليوم 🎉</p>
-            </div>
-          ) : (
-            <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
-              {absentStudents.map((std) => {
-                const parentSent = notifiedParentIds.has(std.id);
-                const studentSent = notifiedStudentIds.has(std.id);
-
+          <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+            {attendedStudents.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-8 font-semibold">
+                لم يتم تسجيل حضور أي طالب حتى الآن
+              </p>
+            ) : (
+              attendedStudents.map((std) => {
+                const rec = groupAttendance.find((a) => a.studentId === std.id);
+                const time = rec ? new Date(rec.scannedAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : '--:--';
                 return (
                   <div
                     key={std.id}
-                    className="p-3.5 rounded-2xl bg-rose-50/40 border border-rose-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs"
+                    className="flex items-center justify-between p-3 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/40"
                   >
-                    <div>
-                      <p className="font-bold text-slate-900">{std.name}</p>
-                      <p className="text-[11px] text-slate-500 font-mono">
-                        كود: #{std.code} • ولي الأمر: {std.parentName} ({std.parentPhone})
-                      </p>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 font-mono font-bold text-xs flex items-center justify-center">
+                        #{std.code}
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-slate-900 dark:text-white">{std.name}</div>
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono" dir="ltr">{std.phone}</div>
+                      </div>
                     </div>
 
-                    {/* Action WhatsApp Buttons */}
-                    <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-mono text-emerald-700 dark:text-emerald-400 font-bold bg-white dark:bg-slate-800 px-2 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {time}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Absent Students List & WhatsApp Actions */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+            <h2 className="text-sm font-bold text-rose-600 dark:text-rose-400 flex items-center gap-2">
+              <UserX className="w-4 h-4" />
+              الطلاب الغائبين ({absentStudents.length})
+            </h2>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">إرسال تنبيه الغياب بنقرة واحدة</span>
+          </div>
+
+          <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+            {absentStudents.length === 0 ? (
+              <p className="text-xs text-emerald-600 text-center py-8 font-bold">
+                🎉 رائع! تم حضور جميع طلاب المجموعة بالكامل اليوم
+              </p>
+            ) : (
+              absentStudents.map((std) => {
+                const parentNotified = notifiedParentIds.has(std.id);
+                return (
+                  <div
+                    key={std.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-2xl bg-rose-50/50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/40 gap-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-300 font-mono font-bold text-xs flex items-center justify-center">
+                        #{std.code}
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-slate-900 dark:text-white">{std.name}</div>
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400">ولي الأمر: {std.parentName} ({std.parentPhone})</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 self-end sm:self-center">
+                      <button
+                        onClick={() => handleManualAttend(std)}
+                        className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1"
+                        title="تسجيل حضور يدوي"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        حضر يدوي
+                      </button>
+
                       <button
                         onClick={() => handleOpenParentWhatsApp(std)}
-                        className={`flex-1 sm:flex-none px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 shadow-xs ${
-                          parentSent
-                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                            : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition flex items-center gap-1.5 ${
+                          parentNotified
+                            ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                            : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-xs'
                         }`}
                       >
                         <MessageSquare className="w-3.5 h-3.5" />
-                        <span>{parentSent ? 'تم فتح الشات ✔️' : 'واتساب ولي الأمر'}</span>
-                      </button>
-
-                      <button
-                        onClick={() => handleOpenStudentWhatsApp(std)}
-                        className={`px-2 py-1.5 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 ${
-                          studentSent
-                            ? 'bg-slate-200 text-slate-700'
-                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                        }`}
-                        title="إرسال واتساب تشجيعي للطالب"
-                      >
-                        <Phone className="w-3.5 h-3.5" />
-                        <span>طالب</span>
+                        {parentNotified ? 'تم إرسال واتساب ✓' : 'واتساب لولي الأمر'}
                       </button>
                     </div>
                   </div>
                 );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Attended Students Section */}
-        <div className="bg-white border border-emerald-200 rounded-3xl p-5 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-emerald-900 flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              الطلاب الحاضرين اليوم ({attendedStudents.length})
-            </h2>
-            <span className="text-[11px] text-slate-400">سجل المسح</span>
+              })
+            )}
           </div>
-
-          {attendedStudents.length === 0 ? (
-            <div className="text-center py-12 text-slate-400 space-y-1">
-              <Clock className="w-8 h-8 mx-auto text-slate-300" />
-              <p className="text-xs">لم يتم تسجيل حضور أي طالب في هذه المجموعة اليوم بعد.</p>
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-              {attendedStudents.map((std) => {
-                const attRec = groupAttendance.find((a) => a.studentId === std.id);
-                return (
-                  <div
-                    key={std.id}
-                    className="p-3 rounded-2xl bg-emerald-50/40 border border-emerald-200/60 flex items-center justify-between text-xs"
-                  >
-                    <div>
-                      <p className="font-bold text-slate-900">{std.name}</p>
-                      <p className="text-[10px] text-slate-500 font-mono">#{std.code} • {std.phone}</p>
-                    </div>
-                    <div className="text-left">
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full block">
-                        حاضر ✅
-                      </span>
-                      {attRec && (
-                        <span className="text-[9px] text-slate-400 block mt-0.5">
-                          {new Date(attRec.scannedAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
       </div>
     </div>

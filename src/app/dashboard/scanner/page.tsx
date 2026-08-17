@@ -414,7 +414,7 @@ export default function ScannerPage() {
                       className="mt-2 px-5 py-2.5 rounded-xl bg-white text-rose-700 font-black text-xs shadow-lg hover:bg-rose-50 active:scale-95 transition flex items-center gap-1.5 mx-auto"
                     >
                       <DollarSign className="w-4 h-4" />
-                      استلام كاش 150 جنيه وتسجيل السداد الآن 💵
+                      استلام كاش 250 جنيه وتسجيل السداد الآن 💵
                     </button>
                   </div>
                 )}
