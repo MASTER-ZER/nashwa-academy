@@ -1,7 +1,7 @@
 import { Student, Group, Session, AttendanceRecord, Subscription, Exam, ExamResult, SystemData } from '@/types';
 import { supabase, isSupabaseConfigured } from './supabase';
 
-const STORAGE_KEY = 'nashwa_academy_db_v2';
+const STORAGE_KEY = 'nashwa_academy_db_v3';
 
 // Default initial seed data
 const INITIAL_GROUPS: Group[] = [
@@ -147,13 +147,101 @@ const INITIAL_EXAM_RESULTS: ExamResult[] = [
   },
 ];
 
+// --- DB Data Mappers (camelCase <-> snake_case) ---
+function studentToDb(s: Student) {
+  return {
+    id: s.id,
+    code: s.code,
+    name: s.name,
+    phone: s.phone,
+    parent_name: s.parentName,
+    parent_phone: s.parentPhone,
+    address: s.address || '',
+    academic_year: s.academicYear || 'FIRST_SEC',
+    group_id: s.groupId || null,
+    status: s.status || 'PENDING',
+    registered_at: s.registeredAt || new Date().toISOString(),
+  };
+}
+
+function dbToStudent(row: any): Student {
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    phone: row.phone,
+    parentName: row.parent_name || '',
+    parentPhone: row.parent_phone || '',
+    address: row.address || '',
+    academicYear: row.academic_year || 'FIRST_SEC',
+    groupId: row.group_id || 'grp-1',
+    status: row.status || 'PENDING',
+    registeredAt: row.registered_at || new Date().toISOString(),
+  };
+}
+
+function attendanceToDb(a: AttendanceRecord) {
+  return {
+    id: a.id,
+    session_id: a.sessionId,
+    student_id: a.studentId,
+    group_id: a.groupId,
+    scanned_at: a.scannedAt,
+    status: a.status,
+    device_id: a.deviceId || 'kiosk',
+    synced: true,
+  };
+}
+
+function dbToAttendance(row: any): AttendanceRecord {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    studentId: row.student_id,
+    groupId: row.group_id,
+    scannedAt: row.scanned_at,
+    status: row.status,
+    deviceId: row.device_id,
+    synced: true,
+  };
+}
+
+function subscriptionToDb(s: Subscription) {
+  return {
+    id: s.id,
+    student_id: s.studentId,
+    month: s.month,
+    amount: s.amount,
+    is_paid: s.isPaid,
+    paid_at: s.paidAt || null,
+    received_by: s.receivedBy || null,
+  };
+}
+
+function dbToSubscription(row: any): Subscription {
+  return {
+    id: row.id,
+    studentId: row.student_id,
+    month: row.month,
+    amount: Number(row.amount),
+    isPaid: Boolean(row.is_paid),
+    paidAt: row.paid_at || undefined,
+    receivedBy: row.received_by || undefined,
+  };
+}
+
 class StorageService {
   private listeners: Set<() => void> = new Set();
   private isSupabaseSyncing: boolean = false;
 
   constructor() {
-    if (typeof window !== 'undefined' && isSupabaseConfigured) {
+    if (typeof window !== 'undefined') {
       this.syncFromSupabase();
+      
+      // Auto sync when window gains focus
+      window.addEventListener('focus', () => {
+        this.syncFromSupabase();
+      });
     }
   }
 
@@ -167,13 +255,13 @@ class StorageService {
     this.isSupabaseSyncing = true;
     try {
       const [
-        { data: groups },
-        { data: students },
-        { data: sessions },
-        { data: attendance },
-        { data: subscriptions },
-        { data: exams },
-        { data: examResults },
+        { data: groupsData },
+        { data: studentsData },
+        { data: sessionsData },
+        { data: attendanceData },
+        { data: subscriptionsData },
+        { data: examsData },
+        { data: resultsData },
       ] = await Promise.all([
         supabase.from('groups').select('*'),
         supabase.from('students').select('*'),
@@ -185,14 +273,53 @@ class StorageService {
       ]);
 
       const localData = this.getData();
+
       const merged: SystemData = {
-        groups: groups && groups.length > 0 ? (groups as unknown as Group[]) : localData.groups,
-        students: students && students.length > 0 ? (students as unknown as Student[]) : localData.students,
-        sessions: sessions ? (sessions as unknown as Session[]) : localData.sessions,
-        attendance: attendance ? (attendance as unknown as AttendanceRecord[]) : localData.attendance,
-        subscriptions: subscriptions ? (subscriptions as unknown as Subscription[]) : localData.subscriptions,
-        exams: exams ? (exams as unknown as Exam[]) : localData.exams,
-        examResults: examResults ? (examResults as unknown as ExamResult[]) : localData.examResults,
+        groups: groupsData && groupsData.length > 0
+          ? groupsData.map((g: any) => ({
+              id: g.id,
+              name: g.name,
+              time: g.time,
+              days: g.days || [],
+              academicYear: g.academic_year || 'FIRST_SEC',
+              maxStudents: g.max_students || 35,
+            }))
+          : localData.groups,
+        students: studentsData && studentsData.length > 0
+          ? studentsData.map(dbToStudent)
+          : localData.students,
+        sessions: sessionsData && sessionsData.length > 0
+          ? sessionsData.map((s: any) => ({
+              id: s.id,
+              groupId: s.group_id,
+              title: s.title,
+              date: s.date,
+              time: s.time,
+            }))
+          : localData.sessions,
+        attendance: attendanceData ? attendanceData.map(dbToAttendance) : localData.attendance,
+        subscriptions: subscriptionsData ? subscriptionsData.map(dbToSubscription) : localData.subscriptions,
+        exams: examsData && examsData.length > 0
+          ? examsData.map((e: any) => ({
+              id: e.id,
+              title: e.title,
+              totalScore: Number(e.total_score),
+              date: e.date,
+              academicYear: e.academic_year,
+            }))
+          : localData.exams,
+        examResults: resultsData && resultsData.length > 0
+          ? resultsData.map((r: any) => ({
+              id: r.id,
+              examId: r.exam_id,
+              studentId: r.student_id,
+              score: Number(r.score),
+              feedback: r.feedback,
+              parentNotified: Boolean(r.parent_notified),
+              studentNotified: Boolean(r.student_notified),
+              gradedAt: r.graded_at,
+            }))
+          : localData.examResults,
       };
 
       this.saveData(merged, false);
@@ -243,7 +370,7 @@ class StorageService {
       examResults: INITIAL_EXAM_RESULTS,
     };
 
-    this.saveData(initial);
+    this.saveData(initial, false);
     return initial;
   }
 
@@ -251,28 +378,6 @@ class StorageService {
     if (this.isClient()) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
       this.notifyListeners();
-
-      if (syncToCloud && isSupabaseConfigured && supabase) {
-        // Asynchronous cloud backup in background
-        this.pushToSupabase(data).catch(() => {});
-      }
-    }
-  }
-
-  private async pushToSupabase(data: SystemData) {
-    if (!supabase) return;
-    try {
-      if (data.students.length > 0) {
-        await supabase.from('students').upsert(data.students, { onConflict: 'id' });
-      }
-      if (data.attendance.length > 0) {
-        await supabase.from('attendance').upsert(data.attendance, { onConflict: 'id' });
-      }
-      if (data.subscriptions.length > 0) {
-        await supabase.from('subscriptions').upsert(data.subscriptions, { onConflict: 'id' });
-      }
-    } catch (e) {
-      console.warn('Supabase cloud push error:', e);
     }
   }
 
@@ -302,6 +407,14 @@ class StorageService {
 
     data.students.push(newStudent);
     this.saveData(data);
+
+    // Save to Supabase Cloud immediately
+    if (supabase) {
+      supabase.from('students').insert(studentToDb(newStudent)).then(({ error }) => {
+        if (error) console.error('Supabase registerStudent error:', error);
+      });
+    }
+
     return newStudent;
   }
 
@@ -314,18 +427,37 @@ class StorageService {
     if (customGroupId) student.groupId = customGroupId;
 
     const currentMonth = 'أكتوبر 2026';
-    const subExists = data.subscriptions.some((s) => s.studentId === student.id && s.month === currentMonth);
-    if (!subExists) {
-      data.subscriptions.push({
+    let sub = data.subscriptions.find((s) => s.studentId === student.id && s.month === currentMonth);
+    if (!sub) {
+      sub = {
         id: `sub-${student.id}-${Date.now()}`,
         studentId: student.id,
         month: currentMonth,
         amount: 150,
         isPaid: false,
-      });
+      };
+      data.subscriptions.push(sub);
     }
 
     this.saveData(data);
+
+    // Push update to Supabase Cloud immediately
+    if (supabase) {
+      supabase.from('students').update({
+        status: 'ACTIVE',
+        group_id: student.groupId,
+        approved_at: new Date().toISOString(),
+      }).eq('id', student.id).then(({ error }) => {
+        if (error) console.error('Supabase approveStudent error:', error);
+      });
+
+      if (sub) {
+        supabase.from('subscriptions').upsert(subscriptionToDb(sub), { onConflict: 'id' }).then(({ error }) => {
+          if (error) console.error('Supabase sub upsert error:', error);
+        });
+      }
+    }
+
     return student;
   }
 
@@ -333,6 +465,12 @@ class StorageService {
     const data = this.getData();
     data.students = data.students.filter((s) => s.id !== studentId);
     this.saveData(data);
+
+    if (supabase) {
+      supabase.from('students').delete().eq('id', studentId).then(({ error }) => {
+        if (error) console.error('Supabase rejectStudent error:', error);
+      });
+    }
   }
 
   public updateStudent(studentId: string, updates: Partial<Student>): Student | null {
@@ -342,6 +480,13 @@ class StorageService {
 
     data.students[index] = { ...data.students[index], ...updates };
     this.saveData(data);
+
+    if (supabase) {
+      supabase.from('students').update(studentToDb(data.students[index])).eq('id', studentId).then(({ error }) => {
+        if (error) console.error('Supabase updateStudent error:', error);
+      });
+    }
+
     return data.students[index];
   }
 
@@ -367,6 +512,8 @@ class StorageService {
     );
 
     if (!student) {
+      // Trigger background sync in case student was added from another device
+      this.syncFromSupabase();
       return { success: false, type: 'NOT_FOUND' };
     }
 
@@ -388,6 +535,17 @@ class StorageService {
           time: '00:00',
         };
         data.sessions.push(session);
+        if (supabase) {
+          supabase.from('sessions').upsert({
+            id: session.id,
+            group_id: session.groupId,
+            title: session.title,
+            date: session.date,
+            time: session.time,
+          }, { onConflict: 'id' }).then(({ error }) => {
+            if (error) console.error('Supabase session upsert error:', error);
+          });
+        }
       }
       sessionId = session.id;
     }
@@ -427,6 +585,13 @@ class StorageService {
     data.attendance.push(newRecord);
     this.saveData(data);
 
+    // Save to Supabase Cloud
+    if (supabase) {
+      supabase.from('attendance').insert(attendanceToDb(newRecord)).then(({ error }) => {
+        if (error) console.error('Supabase attendance insert error:', error);
+      });
+    }
+
     return {
       success: true,
       type: isPaid ? 'SUCCESS_PAID' : 'SUCCESS_UNPAID',
@@ -443,6 +608,11 @@ class StorageService {
     const session = data.sessions.find((s) => s.groupId === groupId && s.date === todayStr);
     if (session) {
       data.attendance = data.attendance.filter((a) => a.sessionId !== session.id);
+      if (supabase) {
+        supabase.from('attendance').delete().eq('session_id', session.id).then(({ error }) => {
+          if (error) console.error('Supabase delete session attendance error:', error);
+        });
+      }
     } else {
       data.attendance = data.attendance.filter((a) => a.groupId !== groupId);
     }
@@ -475,6 +645,13 @@ class StorageService {
       }
     }
     this.saveData(data);
+
+    if (supabase && sub) {
+      supabase.from('subscriptions').upsert(subscriptionToDb(sub), { onConflict: 'id' }).then(({ error }) => {
+        if (error) console.error('Supabase sub toggle error:', error);
+      });
+    }
+
     return sub.isPaid;
   }
 
@@ -487,6 +664,19 @@ class StorageService {
     };
     data.exams.push(newExam);
     this.saveData(data);
+
+    if (supabase) {
+      supabase.from('exams').insert({
+        id: newExam.id,
+        title: newExam.title,
+        total_score: newExam.totalScore,
+        date: newExam.date,
+        academic_year: newExam.academicYear,
+      }).then(({ error }) => {
+        if (error) console.error('Supabase exam insert error:', error);
+      });
+    }
+
     return newExam;
   }
 
@@ -511,6 +701,22 @@ class StorageService {
       data.examResults.push(result);
     }
     this.saveData(data);
+
+    if (supabase) {
+      supabase.from('exam_results').upsert({
+        id: result.id,
+        exam_id: result.examId,
+        student_id: result.studentId,
+        score: result.score,
+        feedback: result.feedback,
+        parent_notified: result.parentNotified,
+        student_notified: result.studentNotified,
+        graded_at: result.gradedAt,
+      }, { onConflict: 'id' }).then(({ error }) => {
+        if (error) console.error('Supabase exam result upsert error:', error);
+      });
+    }
+
     return result;
   }
 
@@ -521,6 +727,15 @@ class StorageService {
       if (target === 'parent') res.parentNotified = true;
       if (target === 'student') res.studentNotified = true;
       this.saveData(data);
+
+      if (supabase) {
+        supabase.from('exam_results').update({
+          parent_notified: res.parentNotified,
+          student_notified: res.studentNotified,
+        }).eq('id', resultId).then(({ error }) => {
+          if (error) console.error('Supabase markNotified error:', error);
+        });
+      }
     }
   }
 
@@ -528,7 +743,7 @@ class StorageService {
   public exportBackup(): string {
     const data = this.getData();
     data.lastBackupDate = new Date().toISOString();
-    this.saveData(data);
+    this.saveData(data, false);
     return JSON.stringify(data, null, 2);
   }
 
@@ -536,7 +751,7 @@ class StorageService {
     try {
       const parsed = JSON.parse(jsonString);
       if (parsed.students && parsed.groups) {
-        this.saveData(parsed);
+        this.saveData(parsed, false);
         return true;
       }
       return false;

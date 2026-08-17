@@ -37,6 +37,7 @@ export default function DashboardOverviewPage() {
   };
 
   useEffect(() => {
+    db.syncFromSupabase().then(() => loadData());
     loadData();
     const unsub = db.subscribe(loadData);
     return unsub;

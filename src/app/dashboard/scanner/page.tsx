@@ -81,6 +81,12 @@ export default function ScannerPage() {
 
   // Load initial data
   useEffect(() => {
+    db.syncFromSupabase().then(() => {
+      const data = db.getData();
+      setGroups(data.groups);
+      setStudents(data.students);
+    });
+
     const data = db.getData();
     setGroups(data.groups);
     setStudents(data.students);
