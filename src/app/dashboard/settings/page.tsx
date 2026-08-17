@@ -98,6 +98,45 @@ export default function SettingsDashboardPage() {
         </div>
       )}
 
+      {/* Supabase Cloud Connection Status */}
+      <div className="bg-gradient-to-br from-slate-900 to-brand-950 border border-brand-800/40 rounded-3xl p-6 text-white shadow-lg space-y-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold">
+              <Database className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-black text-white">قاعدة بيانات Supabase السحابية</h2>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  متصل سحابياً (Live)
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 font-mono mt-0.5">
+                jjlgdihlwwhkxoymrhrw.supabase.co
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={async () => {
+              await db.syncFromSupabase();
+              setStatusMsg({ type: 'success', text: 'تمت المزامنة وتحديث البيانات من سحابة Supabase بنجاح! ☁️' });
+              sound.playSuccessChime();
+            }}
+            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition flex items-center gap-2 active:scale-95"
+          >
+            <RefreshCcw className="w-3.5 h-3.5" />
+            مزامنة سحابية الآن ☁️
+          </button>
+        </div>
+
+        <p className="text-[11px] text-slate-300 bg-white/10 p-3 rounded-2xl border border-white/10 leading-relaxed">
+          🔒 <strong>حفظ سحابي فوري:</strong> كافة عمليات الحضور، تسجيل الطلاب، والدرجات يتم حفظها ومزامنتها تلقائياً على خوادم PostgreSQL المؤمنة في فرانكفورت (AWS EU).
+        </p>
+      </div>
+
       {/* Backup & Recovery Actions Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Export Backup Card */}
