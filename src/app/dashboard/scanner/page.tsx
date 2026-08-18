@@ -23,19 +23,24 @@ import {
   Volume2,
   Calendar,
   Layers,
-  UserCheck
+  UserCheck,
+  AlertTriangle,
+  Radio,
+  XCircle,
+  HelpCircle
 } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import confetti from 'canvas-confetti';
 
 interface ScanResultOverlay {
-  type: 'SUCCESS_PAID' | 'SUCCESS_UNPAID' | 'ALREADY_RECORDED' | 'NOT_FOUND' | 'INACTIVE';
+  type: 'SUCCESS_PAID' | 'SUCCESS_UNPAID' | 'ALREADY_RECORDED' | 'DIFFERENT_GROUP' | 'NOT_FOUND' | 'INACTIVE';
   student?: Student;
   subscriptionPaid?: boolean;
   currentMonth?: string;
   timestamp: string;
   recordedAt?: string;
-  isMakeup?: boolean;
+  originalGroupId?: string;
+  originalGroupName?: string;
 }
 
 export default function ScannerPage() {
@@ -63,6 +68,7 @@ export default function ScannerPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Student[]>([]);
   const [sessionToast, setSessionToast] = useState<string>('');
+  const [liveSyncPulse, setLiveSyncPulse] = useState(false);
 
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const lastScannedCodeRef = useRef<string>('');
@@ -93,7 +99,7 @@ export default function ScannerPage() {
     setRecentScans(mapped);
   }, []);
 
-  // Load initial data
+  // Load initial data and connect to Realtime Sync Bus
   useEffect(() => {
     db.syncFromSupabase().then(() => {
       const d = db.getData();
@@ -111,7 +117,30 @@ export default function ScannerPage() {
       setSelectedGroupId(defaultGrp);
       syncSessionAttendance(defaultGrp);
     }
-  }, [syncSessionAttendance]);
+
+    // Subscribe to Multi-Device Realtime Events (Laptop <-> Mobile)
+    const unsubscribeBus = db.subscribeToKioskEvents((event) => {
+      setLiveSyncPulse(true);
+      setTimeout(() => setLiveSyncPulse(false), 2000);
+
+      if (event.type === 'SCAN_RESULT' && event.payload) {
+        setScanResult(event.payload);
+        if (event.payload.type === 'SUCCESS_PAID') sound.playSuccessChime();
+        else if (event.payload.type === 'SUCCESS_UNPAID' || event.payload.type === 'DIFFERENT_GROUP') sound.playWarningAlert();
+        else if (event.payload.type === 'ALREADY_RECORDED') sound.playInfoSound();
+      }
+
+      // Re-sync attendance list on both devices
+      const latestData = db.getData();
+      setData(latestData);
+      setStudents(latestData.students);
+      syncSessionAttendance(selectedGroupId || (latestData.groups[0]?.id ?? ''));
+    });
+
+    return () => {
+      unsubscribeBus();
+    };
+  }, [selectedGroupId, syncSessionAttendance]);
 
   // Handle group change
   const handleGroupChange = (newGroupId: string) => {
@@ -121,13 +150,13 @@ export default function ScannerPage() {
   };
 
   // Core scan processor
-  const processCode = useCallback((rawCode: string) => {
+  const processCode = useCallback((rawCode: string, forceMakeup = false) => {
     const cleanCode = rawCode.trim();
     if (!cleanCode) return;
 
-    // Debounce duplicate scans within 2.5 seconds
+    // Debounce duplicate scans within 2 seconds unless explicit action
     const now = Date.now();
-    if (cleanCode === lastScannedCodeRef.current && now - lastScanTimeRef.current < 2500) {
+    if (!forceMakeup && cleanCode === lastScannedCodeRef.current && now - lastScanTimeRef.current < 2000) {
       return;
     }
     lastScannedCodeRef.current = cleanCode;
@@ -136,63 +165,68 @@ export default function ScannerPage() {
     const result = db.scanAttendance({
       scannedCode: cleanCode,
       activeGroupId: selectedGroupId,
-      deviceId: 'kiosk-main',
+      deviceId: 'kiosk-scanner',
+      allowMakeup: forceMakeup,
     });
 
     const timeStr = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    const origGrp = result.student ? db.getData().groups.find((g) => g.id === result.student?.groupId) : undefined;
+
+    let overlayData: ScanResultOverlay;
 
     if (result.type === 'NOT_FOUND') {
       sound.playErrorBeep();
-      setScanResult({
-        type: 'NOT_FOUND',
-        timestamp: timeStr,
-      });
+      overlayData = { type: 'NOT_FOUND', timestamp: timeStr };
     } else if (result.type === 'INACTIVE') {
       sound.playWarningAlert();
-      setScanResult({
-        type: 'INACTIVE',
+      overlayData = { type: 'INACTIVE', student: result.student, timestamp: timeStr };
+    } else if (result.type === 'DIFFERENT_GROUP') {
+      // 🟠 Orange Alert: Student belongs to another group!
+      sound.playWarningAlert();
+      overlayData = {
+        type: 'DIFFERENT_GROUP',
         student: result.student,
+        subscriptionPaid: result.subscriptionPaid,
+        currentMonth: result.currentMonth,
+        originalGroupId: result.student?.groupId,
+        originalGroupName: origGrp ? origGrp.name : 'مجموعة أخرى',
         timestamp: timeStr,
-      });
+      };
     } else if (result.type === 'ALREADY_RECORDED') {
+      // 🔵 Blue Alert: Duplicate entry in same session!
       sound.playInfoSound();
       const recordedTime = result.record
         ? new Date(result.record.scannedAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
         : timeStr;
 
-      setScanResult({
+      overlayData = {
         type: 'ALREADY_RECORDED',
         student: result.student,
         subscriptionPaid: result.subscriptionPaid,
         currentMonth: result.currentMonth,
         timestamp: timeStr,
         recordedAt: recordedTime,
-      });
+      };
     } else {
-      // SUCCESS (Paid or Unpaid)
+      // 🟢 Green or 🔴 Red Alert
       const isMakeup = result.student && result.student.groupId !== selectedGroupId;
 
       if (result.subscriptionPaid) {
         sound.playSuccessChime();
         try {
-          confetti({
-            particleCount: 50,
-            spread: 60,
-            origin: { y: 0.5 },
-          });
+          confetti({ particleCount: 50, spread: 60, origin: { y: 0.5 } });
         } catch {}
       } else {
         sound.playWarningAlert();
       }
 
-      setScanResult({
+      overlayData = {
         type: result.subscriptionPaid ? 'SUCCESS_PAID' : 'SUCCESS_UNPAID',
         student: result.student,
         subscriptionPaid: result.subscriptionPaid,
         currentMonth: result.currentMonth,
         timestamp: timeStr,
-        isMakeup: isMakeup,
-      });
+      };
 
       if (result.student) {
         setRecentScans((prev) => [
@@ -208,10 +242,13 @@ export default function ScannerPage() {
       }
     }
 
-    // Auto-clear overlay after 6 seconds
-    setTimeout(() => {
-      setScanResult((curr) => (curr?.timestamp === timeStr ? null : curr));
-    }, 6000);
+    setScanResult(overlayData);
+
+    // Broadcast in real-time to Laptop / other connected screens
+    db.broadcastKioskEvent({
+      type: 'SCAN_RESULT',
+      payload: overlayData,
+    });
   }, [selectedGroupId]);
 
   // Start Camera
@@ -308,17 +345,39 @@ export default function ScannerPage() {
     setSearchResults(matches);
   };
 
-  // Instant Cash payment collector button
+  // Instant Cash Payment Collector (From Mobile or Laptop)
   const handleCollectCash = (studentId: string) => {
     db.toggleSubscription(studentId, 'أكتوبر 2026', 'مس نشوى');
     sound.playSuccessChime();
     try {
-      confetti({ particleCount: 40, spread: 50 });
+      confetti({ particleCount: 50, spread: 60 });
     } catch {}
-    setScanResult((prev) => prev ? { ...prev, type: 'SUCCESS_PAID', subscriptionPaid: true } : null);
+
+    const updatedOverlay: ScanResultOverlay | null = scanResult
+      ? { ...scanResult, type: 'SUCCESS_PAID', subscriptionPaid: true }
+      : null;
+
+    setScanResult(updatedOverlay);
     setRecentScans((prev) =>
       prev.map((r) => (r.student.id === studentId ? { ...r, isPaid: true, type: 'تم السداد كاش 💵' } : r))
     );
+
+    // Broadcast payment confirmation to all screens
+    db.broadcastKioskEvent({
+      type: 'PAYMENT_COLLECTED',
+      payload: { studentId, updatedOverlay },
+    });
+  };
+
+  // Accept Makeup Session (حضور تعويض من مجموعة أخرى)
+  const handleAcceptMakeup = (studentCode: string) => {
+    processCode(studentCode, true);
+  };
+
+  // Skip / Dismiss Overlay
+  const handleDismissOverlay = () => {
+    setScanResult(null);
+    db.broadcastKioskEvent({ type: 'SCAN_RESULT', payload: null });
   };
 
   // Reset / Clear Today's Session Attendance
@@ -330,6 +389,7 @@ export default function ScannerPage() {
       setSessionToast('تمت إعادة تعيين حضور الحصة بنجاح! يمكنك مسح الطلاب مجدداً الآن 🔄');
       setTimeout(() => setSessionToast(''), 4000);
       sound.playSuccessChime();
+      db.broadcastKioskEvent({ type: 'ATTENDANCE_UPDATE', payload: {} });
     }
   };
 
@@ -339,21 +399,29 @@ export default function ScannerPage() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto py-2">
-      {/* Top Bar: Group Selector & Live Stats */}
-      <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-200 dark:border-cyan-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      {/* Top Bar: Group Selector & Live Sync Indicator */}
+      <div className="liquid-glass rounded-3xl p-4 sm:p-6 shadow-sm border border-slate-200 dark:border-cyan-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-50 dark:bg-cyan-950/70 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800 text-xs font-bold">
               <QrCode className="w-3.5 h-3.5 text-cyan-500" />
-              <span>كشك مسح الحضور والاشتراكات</span>
+              <span>كشك الحضور والاسكانر الفوري</span>
             </span>
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-              📅 {new Date().toLocaleDateString('ar-EG', { weekday: 'long', day: 'numeric', month: 'long' })}
+
+            {/* Live Sync Badge between Mobile and Laptop */}
+            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black border transition-all ${
+              liveSyncPulse 
+                ? 'bg-emerald-500 text-white border-emerald-400 scale-105' 
+                : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+            }`}>
+              <Radio className="w-3 h-3 animate-pulse" />
+              <span>المزامنة اللحظية نشطة (موبايل + لابتوب)</span>
             </span>
           </div>
-          <h1 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
-            تسجيل حضور الطلاب فورياً بالكاميرا
-          </h1>
+
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            📅 {new Date().toLocaleDateString('ar-EG', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
@@ -390,23 +458,26 @@ export default function ScannerPage() {
 
       {/* Main Scanner Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left: Camera & Overlay Feedback */}
+        {/* Left Column: Camera Viewport & The 4 Live Action Alert Cards */}
         <div className="lg:col-span-7 space-y-4">
-          <div className="bg-slate-950 rounded-3xl p-5 sm:p-7 text-white relative overflow-hidden shadow-2xl border border-slate-800 min-h-[460px] flex flex-col justify-between">
-            {/* Scan Result Feedback Card */}
+          <div className="bg-slate-950 rounded-3xl p-5 sm:p-7 text-white relative overflow-hidden shadow-2xl border border-slate-800 min-h-[480px] flex flex-col justify-between">
+            
+            {/* THE 4 DISTINCT REAL-TIME ACTION ALERT CARDS */}
             {scanResult && (
               <div
                 className={`absolute inset-0 z-30 flex flex-col items-center justify-center p-6 text-center transition-all animate-ios-spring ${
                   scanResult.type === 'SUCCESS_PAID'
-                    ? 'bg-slate-950/95 border-2 border-emerald-500 text-white'
+                    ? 'bg-slate-950/95 border-4 border-emerald-500 text-white'
                     : scanResult.type === 'SUCCESS_UNPAID'
-                    ? 'bg-slate-950/95 border-2 border-rose-500 text-white'
+                    ? 'bg-slate-950/95 border-4 border-rose-500 text-white'
+                    : scanResult.type === 'DIFFERENT_GROUP'
+                    ? 'bg-slate-950/95 border-4 border-amber-500 text-white'
                     : scanResult.type === 'ALREADY_RECORDED'
-                    ? 'bg-slate-950/95 border-2 border-cyan-500 text-white'
+                    ? 'bg-slate-950/95 border-4 border-sky-500 text-white'
                     : 'bg-slate-900/95 border-2 border-slate-700 text-white'
                 }`}
               >
-                {/* 1. Success & Paid */}
+                {/* 🟢 1. GREEN ALERT: Success & Fully Paid */}
                 {scanResult.type === 'SUCCESS_PAID' && (
                   <div className="space-y-4 max-w-md mx-auto">
                     <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center mx-auto shadow-2xl shadow-emerald-500/50 scale-110 border-2 border-white/30">
@@ -414,25 +485,30 @@ export default function ScannerPage() {
                     </div>
 
                     <div className="space-y-1">
-                      <h2 className="text-2xl sm:text-3xl font-black">{scanResult.student?.name}</h2>
-                      <p className="text-xs text-emerald-400 font-bold">تم تسجيل الحضور بنجاح ✅</p>
-                      <p className="text-xs text-slate-300 font-mono">كود الطالب: #{scanResult.student?.code}</p>
+                      <span className="px-3.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-black">
+                        تم القبول وتسجيل الحضور ✅
+                      </span>
+                      <h2 className="text-2xl sm:text-3xl font-black mt-2">{scanResult.student?.name}</h2>
+                      <p className="text-xs text-slate-300 font-mono">كود الطالب: #{scanResult.student?.code} • {scanResult.student?.phone}</p>
                     </div>
-
-                    {scanResult.isMakeup && (
-                      <div className="p-2.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold">
-                        🔄 حضور حصة تعويض
-                      </div>
-                    )}
 
                     <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 text-xs font-bold">
                       <DollarSign className="w-4 h-4" />
-                      <span>الاشتراك مسدد لشهر ({scanResult.currentMonth}) ✅</span>
+                      <span>الاشتراك مسدد لشهر ({scanResult.currentMonth}) 💵</span>
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        onClick={handleDismissOverlay}
+                        className="px-6 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 text-xs font-bold transition"
+                      >
+                        إغلاق ومسح الطالب التالي ⏭️
+                      </button>
                     </div>
                   </div>
                 )}
 
-                {/* 2. Success But Unpaid */}
+                {/* 🔴 2. RED ALERT: Present But Unpaid Subscription */}
                 {scanResult.type === 'SUCCESS_UNPAID' && (
                   <div className="space-y-4 max-w-md mx-auto">
                     <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-rose-600 to-amber-500 flex items-center justify-center mx-auto shadow-2xl shadow-rose-500/50 scale-110 border-2 border-white/30">
@@ -440,43 +516,112 @@ export default function ScannerPage() {
                     </div>
 
                     <div className="space-y-1">
-                      <h2 className="text-2xl sm:text-3xl font-black">{scanResult.student?.name}</h2>
-                      <p className="text-xs text-rose-300 font-bold bg-rose-500/20 py-1 px-3 rounded-full inline-block">
-                        تم تسجيل الحضور ✅ • اشتراك ({scanResult.currentMonth}) مستحق
-                      </p>
-                      <p className="text-xs text-slate-300 font-mono mt-1">كود: #{scanResult.student?.code}</p>
+                      <span className="px-3.5 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-black">
+                        ⚠️ تنبيه: اشتراك الشهر غير مسدد (250 جنيه)
+                      </span>
+                      <h2 className="text-2xl sm:text-3xl font-black mt-2">{scanResult.student?.name}</h2>
+                      <p className="text-xs text-slate-300 font-mono">كود: #{scanResult.student?.code} • {scanResult.student?.phone}</p>
                     </div>
 
-                    {/* 1-Click Cash Collection Button */}
-                    <button
-                      onClick={() => handleCollectCash(scanResult.student!.id)}
-                      className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 active:scale-95 text-white font-black text-sm shadow-xl shadow-emerald-500/30 transition flex items-center justify-center gap-2 border border-emerald-400/30"
-                    >
-                      <DollarSign className="w-5 h-5" />
-                      استلام كاش 250 جنيه وتأكيد السداد الآن 💵
-                    </button>
+                    {/* Instant 1-Click Action Buttons */}
+                    <div className="space-y-2 pt-2">
+                      <button
+                        onClick={() => handleCollectCash(scanResult.student!.id)}
+                        className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 active:scale-95 text-white font-black text-sm shadow-xl shadow-emerald-500/30 transition flex items-center justify-center gap-2 border border-emerald-400/30"
+                      >
+                        <DollarSign className="w-5 h-5" />
+                        استلام 250 جنيه كاش وتأكيد السداد فوراً 💵
+                      </button>
+
+                      <button
+                        onClick={handleDismissOverlay}
+                        className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 text-xs font-bold transition"
+                      >
+                        السماح بالدخول وتأجيل الدفع مؤقتاً ⏳
+                      </button>
+                    </div>
                   </div>
                 )}
 
-                {/* 3. Already Recorded */}
+                {/* 🔵 3. BLUE ALERT: Duplicate Scan / Already Attended */}
                 {scanResult.type === 'ALREADY_RECORDED' && (
-                  <div className="space-y-3 max-w-md mx-auto">
-                    <div className="w-16 h-16 rounded-2xl bg-cyan-500/20 text-cyan-300 flex items-center justify-center mx-auto border border-cyan-500/40">
-                      <Info className="w-10 h-10" />
+                  <div className="space-y-4 max-w-md mx-auto">
+                    <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-sky-600 to-cyan-400 flex items-center justify-center mx-auto shadow-2xl shadow-sky-500/50 scale-110 border-2 border-white/30">
+                      <AlertTriangle className="w-12 h-12 text-white" />
                     </div>
-                    <h2 className="text-2xl font-black">{scanResult.student?.name}</h2>
-                    <p className="text-xs font-bold bg-cyan-950/80 border border-cyan-500/30 py-1.5 px-4 rounded-full inline-block text-cyan-300">
-                      تم تسجيل حضور هذا الطالب مسبقاً في هذه الحصة الساعة [{scanResult.recordedAt}] ✅
+
+                    <div className="space-y-1">
+                      <span className="px-3.5 py-1 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30 text-xs font-black">
+                        ⛔ تنبيه: كارت مكرر - الطالب مسجل دخول مسبقاً!
+                      </span>
+                      <h2 className="text-2xl sm:text-3xl font-black mt-2">{scanResult.student?.name}</h2>
+                      <p className="text-xs text-sky-300 font-bold bg-sky-950/80 py-1.5 px-4 rounded-xl inline-block mt-2 border border-sky-500/30">
+                        تم تسجيل حضور هذا الطالب مسبقاً الساعة [{scanResult.recordedAt}]
+                      </p>
+                    </div>
+
+                    <p className="text-xs text-slate-300 bg-white/10 p-3 rounded-2xl border border-white/10">
+                      🛑 يرجى إيقاف الطالب والتحقق من هويته لمنع استخدام نفس الكارت لأكثر من شخص.
                     </p>
+
+                    <div className="pt-2">
+                      <button
+                        onClick={handleDismissOverlay}
+                        className="px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition"
+                      >
+                        تم التحقق وإغلاق التنبيه ✅
+                      </button>
+                    </div>
                   </div>
                 )}
 
-                {/* 4. Not Found */}
+                {/* 🟠 4. ORANGE ALERT: Different Group / Makeup Needed */}
+                {scanResult.type === 'DIFFERENT_GROUP' && (
+                  <div className="space-y-4 max-w-md mx-auto">
+                    <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-amber-600 to-yellow-400 flex items-center justify-center mx-auto shadow-2xl shadow-amber-500/50 scale-110 border-2 border-white/30">
+                      <RefreshCw className="w-12 h-12 text-white" />
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="px-3.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-black">
+                        🔄 تنبيه: الطالب مسجل في مجموعة أخرى!
+                      </span>
+                      <h2 className="text-2xl sm:text-3xl font-black mt-2">{scanResult.student?.name}</h2>
+                      <p className="text-xs text-amber-300 font-bold bg-amber-950/80 py-1 px-3 rounded-lg inline-block mt-1">
+                        مجموعته الأصلية: {scanResult.originalGroupName}
+                      </p>
+                    </div>
+
+                    {/* Action 1 & Action 2 */}
+                    <div className="space-y-2 pt-2">
+                      <button
+                        onClick={() => handleAcceptMakeup(scanResult.student!.code)}
+                        className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-95 text-white font-black text-xs shadow-xl shadow-amber-500/30 transition flex items-center justify-center gap-2 border border-amber-400/30"
+                      >
+                        <Check className="w-4 h-4" />
+                        قبول الطالب كـ (حضور تعويض) في حصة اليوم ✅
+                      </button>
+
+                      <button
+                        onClick={handleDismissOverlay}
+                        className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 text-xs font-bold transition flex items-center justify-center gap-1.5"
+                      >
+                        <XCircle className="w-4 h-4 text-rose-400" />
+                        تفادي الحصة وانتظار موعد مجموعته ⛔
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 5. Not Found */}
                 {scanResult.type === 'NOT_FOUND' && (
-                  <div className="space-y-2">
-                    <AlertCircle className="w-14 h-14 mx-auto text-rose-400" />
-                    <h2 className="text-xl font-bold">كود غير معروف!</h2>
-                    <p className="text-xs text-slate-300">لم يتم العثور على طالب بهذا الكود في النظام أو بانتظار الاعتماد.</p>
+                  <div className="space-y-3">
+                    <AlertCircle className="w-16 h-16 mx-auto text-rose-400" />
+                    <h2 className="text-xl font-bold">كود غير مسجل!</h2>
+                    <p className="text-xs text-slate-300">لم يتم العثور على طالب بهذا الكود أو أن الاستمارة قيد المراجعة.</p>
+                    <button onClick={handleDismissOverlay} className="px-5 py-2 bg-white/10 rounded-xl text-xs font-bold mt-2">
+                      إغلاق
+                    </button>
                   </div>
                 )}
               </div>
@@ -487,7 +632,7 @@ export default function ScannerPage() {
               <div className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-2 text-slate-300 font-bold">
                   <Camera className="w-4 h-4 text-cyan-400" />
-                  كاميرا السكانر (وجه رمز الـ QR أو الباركود)
+                  كاميرا مسح الباركود والـ QR
                 </span>
                 {isCameraActive && (
                   <button
@@ -500,7 +645,7 @@ export default function ScannerPage() {
                 )}
               </div>
 
-              {/* Camera Target Viewport */}
+              {/* Camera Target Container */}
               <div className="relative w-full max-w-[320px] aspect-square mx-auto rounded-3xl overflow-hidden bg-black/90 border-2 border-dashed border-cyan-500/40 flex items-center justify-center shadow-inner">
                 <div id="qr-reader-target" className="w-full h-full" />
 
@@ -530,7 +675,7 @@ export default function ScannerPage() {
                       className="px-6 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 active:scale-95 text-white font-black text-xs shadow-lg shadow-emerald-500/30 transition flex items-center gap-2 mx-auto"
                     >
                       <Camera className="w-4 h-4" />
-                      تشغيل الكاميرا الآن 📹
+                      تشغيل الكاميرا 📹
                     </button>
                   </div>
                 )}
@@ -555,36 +700,42 @@ export default function ScannerPage() {
               )}
             </div>
 
-            {/* Quick Demo Test Buttons */}
+            {/* Quick Demo Test Buttons for All 4 Cases */}
             <div className="pt-3 border-t border-slate-800">
               <span className="text-[11px] font-bold text-slate-400 block mb-1.5">
-                ⚡ تجربة سريعة بأكواد الطلاب:
+                ⚡ تجربة سريعة للحالات الأربعة:
               </span>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <button
                   onClick={() => processCode('101')}
-                  className="p-2 rounded-xl bg-emerald-950/60 text-emerald-300 border border-emerald-800/60 hover:bg-emerald-900/80 text-[11px] font-bold transition text-right"
+                  className="p-2 rounded-xl bg-emerald-950/60 text-emerald-300 border border-emerald-800/60 hover:bg-emerald-900/80 text-[11px] font-bold transition text-center"
                 >
-                  🟢 إياد (#101) - مسدد
+                  🟢 101 مسدد
                 </button>
                 <button
                   onClick={() => processCode('102')}
-                  className="p-2 rounded-xl bg-rose-950/60 text-rose-300 border border-rose-800/60 hover:bg-rose-900/80 text-[11px] font-bold transition text-right"
+                  className="p-2 rounded-xl bg-rose-950/60 text-rose-300 border border-rose-800/60 hover:bg-rose-900/80 text-[11px] font-bold transition text-center"
                 >
-                  🔴 أحمد (#102) - غير مسدد
+                  🔴 102 غير مسدد
+                </button>
+                <button
+                  onClick={() => processCode('101')}
+                  className="p-2 rounded-xl bg-sky-950/60 text-sky-300 border border-sky-800/60 hover:bg-sky-900/80 text-[11px] font-bold transition text-center"
+                >
+                  🔵 دخول مكرر
                 </button>
                 <button
                   onClick={() => processCode('103')}
-                  className="p-2 rounded-xl bg-emerald-950/60 text-emerald-300 border border-emerald-800/60 hover:bg-emerald-900/80 text-[11px] font-bold transition text-right"
+                  className="p-2 rounded-xl bg-amber-950/60 text-amber-300 border border-amber-800/60 hover:bg-amber-900/80 text-[11px] font-bold transition text-center"
                 >
-                  🟢 سارة (#103) - مسدد
+                  🟠 مجموعة أخرى
                 </button>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right: Emergency Search & Live Session Attendees */}
+        {/* Right Column: Emergency Search & Live Session Attendees */}
         <div className="lg:col-span-5 space-y-6">
           {/* Emergency Fast Search */}
           <div className="liquid-glass rounded-3xl p-5 shadow-sm space-y-3">

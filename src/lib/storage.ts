@@ -508,13 +508,15 @@ class StorageService {
     activeGroupId: string;
     activeSessionId?: string;
     deviceId?: string;
+    allowMakeup?: boolean;
   }): {
     success: boolean;
-    type: 'SUCCESS_PAID' | 'SUCCESS_UNPAID' | 'ALREADY_RECORDED' | 'NOT_FOUND' | 'INACTIVE';
+    type: 'SUCCESS_PAID' | 'SUCCESS_UNPAID' | 'ALREADY_RECORDED' | 'DIFFERENT_GROUP' | 'NOT_FOUND' | 'INACTIVE';
     student?: Student;
     record?: AttendanceRecord;
     subscriptionPaid?: boolean;
     currentMonth?: string;
+    originalGroupId?: string;
   } {
     const data = this.getData();
     const code = params.scannedCode.trim();
@@ -571,14 +573,27 @@ class StorageService {
       };
     }
 
-    // New attendance record
+    // Check if student belongs to a different group and makeup not yet confirmed
+    const isDifferentGroup = student.groupId !== params.activeGroupId;
+    if (isDifferentGroup && !params.allowMakeup) {
+      return {
+        success: true,
+        type: 'DIFFERENT_GROUP',
+        student,
+        originalGroupId: student.groupId,
+        subscriptionPaid: isPaid,
+        currentMonth,
+      };
+    }
+
+    // New attendance record (Attended or Makeup)
     const newRecord: AttendanceRecord = {
       id: `att-${sessionId}-${student.id}-${Date.now()}`,
       sessionId: sessionId,
       studentId: student.id,
       groupId: student.groupId,
       scannedAt: new Date().toISOString(),
-      status: student.groupId === params.activeGroupId ? 'ATTENDED' : 'MAKEUP',
+      status: isDifferentGroup ? 'MAKEUP' : 'ATTENDED',
       deviceId: params.deviceId || 'main-kiosk',
       synced: true,
     };
@@ -853,6 +868,72 @@ class StorageService {
     } catch {
       return false;
     }
+  }
+
+  // --- Multi-Device Realtime Kiosk Sync (Mobile <-> Laptop) ---
+  public broadcastKioskEvent(event: {
+    type: 'SCAN_RESULT' | 'ATTENDANCE_UPDATE' | 'PAYMENT_COLLECTED';
+    payload: any;
+  }) {
+    // 1. Supabase Realtime Broadcast Channel
+    if (supabase) {
+      try {
+        const channel = supabase.channel('kiosk_live_sync');
+        channel.send({
+          type: 'broadcast',
+          event: 'kiosk_action',
+          payload: event,
+        });
+      } catch (err) {
+        console.warn('Supabase broadcast error:', err);
+      }
+    }
+
+    // 2. Browser BroadcastChannel API (Cross-tab / Local network)
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        const bc = new BroadcastChannel('nashwa_kiosk_sync_bus');
+        bc.postMessage(event);
+      } catch {}
+    }
+  }
+
+  public subscribeToKioskEvents(callback: (event: { type: string; payload: any }) => void): () => void {
+    let supabaseChannel: any = null;
+    let broadcastChannel: BroadcastChannel | null = null;
+
+    if (supabase) {
+      try {
+        supabaseChannel = supabase.channel('kiosk_live_sync');
+        supabaseChannel
+          .on('broadcast', { event: 'kiosk_action' }, ({ payload }: any) => {
+            callback(payload);
+          })
+          .subscribe();
+      } catch (err) {
+        console.warn('Supabase subscribe error:', err);
+      }
+    }
+
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        broadcastChannel = new BroadcastChannel('nashwa_kiosk_sync_bus');
+        broadcastChannel.onmessage = (msg) => {
+          if (msg.data) {
+            callback(msg.data);
+          }
+        };
+      } catch {}
+    }
+
+    return () => {
+      if (supabaseChannel) {
+        supabase?.removeChannel(supabaseChannel);
+      }
+      if (broadcastChannel) {
+        broadcastChannel.close();
+      }
+    };
   }
 
   public resetToDefault() {
