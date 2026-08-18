@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Sparkles, GraduationCap, FileSpreadsheet, Lock } from "lucide-react";
 import PWAInstallBanner from "@/components/PWAInstallBanner";
 import MobileBottomNav from "@/components/MobileBottomNav";
+import AppHeader from "@/components/AppHeader";
 import ThemeToggle from "@/components/ThemeToggle";
 import { ThemeProvider } from "@/context/ThemeContext";
 
@@ -41,48 +42,8 @@ export default function RootLayout({
             <div className="absolute top-1/3 -left-40 w-[600px] h-[600px] bg-brand-600/10 rounded-full blur-[140px] animate-pulse-slow" style={{ animationDelay: '2s' }} />
           </div>
 
-          {/* Unified Liquid Glass Header */}
-          <header className="sticky top-0 z-40 px-2 sm:px-6 py-2.5 sm:py-3 no-print">
-            <div className="max-w-7xl mx-auto h-14 sm:h-16 rounded-2xl liquid-glass px-3 sm:px-6 flex items-center justify-between gap-2 border border-white/40 dark:border-cyan-500/20">
-              {/* Logo & Brand (Responsive) */}
-              <Link href="/" className="flex items-center gap-2.5 sm:gap-3 group active:scale-95 transition-transform shrink-0">
-                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl overflow-hidden shadow-md shadow-cyan-500/20 group-hover:scale-105 transition-transform shrink-0 border border-white/20">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/logo.png" alt="مس نشوى" className="w-full h-full object-cover" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xs sm:text-base font-black text-slate-900 dark:text-white leading-tight tracking-tight whitespace-nowrap">
-                    أكاديمية مس نشوى
-                  </span>
-                  <span className="text-[10px] sm:text-[11px] text-brand-600 dark:text-cyan-400 font-bold leading-none mt-0.5">
-                    العلوم المتكاملة
-                  </span>
-                </div>
-              </Link>
-
-              {/* Navigation Actions */}
-              <nav className="flex items-center gap-1.5 sm:gap-2">
-                <Link
-                  href="/register"
-                  className="hidden md:inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-brand-600 dark:hover:text-cyan-400 hover:bg-white/60 dark:hover:bg-slate-800/60 rounded-xl transition"
-                >
-                  <FileSpreadsheet className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
-                  استمارة التقديم
-                </Link>
-
-                <Link
-                  href="/student"
-                  className="inline-flex items-center gap-1 sm:gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 text-[11px] sm:text-xs font-black bg-gradient-to-r from-brand-600 to-cyan-500 hover:from-brand-500 hover:to-cyan-400 text-white rounded-xl shadow-md shadow-brand-600/25 active:scale-95 transition whitespace-nowrap"
-                >
-                  <GraduationCap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-100" />
-                  <span>كارت الطالب</span>
-                </Link>
-
-                {/* Dark / Light Mode Toggle */}
-                <ThemeToggle />
-              </nav>
-            </div>
-          </header>
+          {/* Unified Dynamic App Header */}
+          <AppHeader />
 
           {/* Main App Content */}
           <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 lg:p-8 pb-24 md:pb-8">
