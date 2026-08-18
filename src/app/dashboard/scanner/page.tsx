@@ -101,44 +101,66 @@ export default function ScannerPage() {
 
   // Load initial data and connect to Realtime Sync Bus
   useEffect(() => {
-    db.syncFromSupabase().then(() => {
+    const refreshAll = async () => {
+      await db.syncFromSupabase();
       const d = db.getData();
       setData(d);
       setGroups(d.groups);
       setStudents(d.students);
-    });
+      if (selectedGroupId) {
+        syncSessionAttendance(selectedGroupId);
+      }
+    };
+
+    refreshAll();
 
     const d = db.getData();
     setData(d);
     setGroups(d.groups);
     setStudents(d.students);
-    if (d.groups.length > 0) {
+    if (d.groups.length > 0 && !selectedGroupId) {
       const defaultGrp = d.groups[0].id;
       setSelectedGroupId(defaultGrp);
       syncSessionAttendance(defaultGrp);
     }
 
-    // Subscribe to Multi-Device Realtime Events (Laptop <-> Mobile)
+    // 1. Subscribe to Multi-Device Instant Realtime Events (WebSocket < 50ms)
     const unsubscribeBus = db.subscribeToKioskEvents((event) => {
       setLiveSyncPulse(true);
       setTimeout(() => setLiveSyncPulse(false), 2000);
 
-      if (event.type === 'SCAN_RESULT' && event.payload) {
+      if (event.type === 'SCAN_RESULT' && event.payload !== undefined) {
         setScanResult(event.payload);
-        if (event.payload.type === 'SUCCESS_PAID') sound.playSuccessChime();
-        else if (event.payload.type === 'SUCCESS_UNPAID' || event.payload.type === 'DIFFERENT_GROUP') sound.playWarningAlert();
-        else if (event.payload.type === 'ALREADY_RECORDED') sound.playInfoSound();
+        if (event.payload?.type === 'SUCCESS_PAID') sound.playSuccessChime();
+        else if (event.payload?.type === 'SUCCESS_UNPAID' || event.payload?.type === 'DIFFERENT_GROUP') sound.playWarningAlert();
+        else if (event.payload?.type === 'ALREADY_RECORDED') sound.playInfoSound();
+      } else if (event.type === 'PAYMENT_COLLECTED' && event.payload) {
+        setScanResult(event.payload.updatedOverlay || null);
+        sound.playSuccessChime();
       }
 
-      // Re-sync attendance list on both devices
+      // Re-sync attendance list on both devices immediately
       const latestData = db.getData();
       setData(latestData);
       setStudents(latestData.students);
       syncSessionAttendance(selectedGroupId || (latestData.groups[0]?.id ?? ''));
     });
 
+    // 2. Continuous 2-Second Cloud Sync Pulse (Zero-Refresh Guarantee)
+    const syncInterval = setInterval(() => {
+      db.syncFromSupabase().then(() => {
+        const latest = db.getData();
+        setData(latest);
+        setStudents(latest.students);
+        if (selectedGroupId) {
+          syncSessionAttendance(selectedGroupId);
+        }
+      });
+    }, 2000);
+
     return () => {
       unsubscribeBus();
+      clearInterval(syncInterval);
     };
   }, [selectedGroupId, syncSessionAttendance]);
 

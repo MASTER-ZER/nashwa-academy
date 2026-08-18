@@ -870,6 +870,23 @@ class StorageService {
     }
   }
 
+  private sharedKioskChannel: any = null;
+
+  private getSharedKioskChannel() {
+    if (!supabase) return null;
+    if (!this.sharedKioskChannel) {
+      this.sharedKioskChannel = supabase.channel('kiosk_live_sync_v3', {
+        config: {
+          broadcast: { ack: true },
+        },
+      });
+      this.sharedKioskChannel.subscribe((status: string) => {
+        console.log('📡 Supabase Realtime Channel Status:', status);
+      });
+    }
+    return this.sharedKioskChannel;
+  }
+
   // --- Multi-Device Realtime Kiosk Sync (Mobile <-> Laptop) ---
   public broadcastKioskEvent(event: {
     type: 'SCAN_RESULT' | 'ATTENDANCE_UPDATE' | 'PAYMENT_COLLECTED';
@@ -878,12 +895,14 @@ class StorageService {
     // 1. Supabase Realtime Broadcast Channel
     if (supabase) {
       try {
-        const channel = supabase.channel('kiosk_live_sync');
-        channel.send({
-          type: 'broadcast',
-          event: 'kiosk_action',
-          payload: event,
-        });
+        const channel = this.getSharedKioskChannel();
+        if (channel) {
+          channel.send({
+            type: 'broadcast',
+            event: 'kiosk_action',
+            payload: event,
+          });
+        }
       } catch (err) {
         console.warn('Supabase broadcast error:', err);
       }
@@ -899,17 +918,16 @@ class StorageService {
   }
 
   public subscribeToKioskEvents(callback: (event: { type: string; payload: any }) => void): () => void {
-    let supabaseChannel: any = null;
     let broadcastChannel: BroadcastChannel | null = null;
 
     if (supabase) {
       try {
-        supabaseChannel = supabase.channel('kiosk_live_sync');
-        supabaseChannel
-          .on('broadcast', { event: 'kiosk_action' }, ({ payload }: any) => {
-            callback(payload);
-          })
-          .subscribe();
+        const channel = this.getSharedKioskChannel();
+        if (channel) {
+          channel.on('broadcast', { event: 'kiosk_action' }, ({ payload }: any) => {
+            if (payload) callback(payload);
+          });
+        }
       } catch (err) {
         console.warn('Supabase subscribe error:', err);
       }
@@ -927,9 +945,6 @@ class StorageService {
     }
 
     return () => {
-      if (supabaseChannel) {
-        supabase?.removeChannel(supabaseChannel);
-      }
       if (broadcastChannel) {
         broadcastChannel.close();
       }
