@@ -108,7 +108,7 @@ export default function SubscriptionsDashboardPage() {
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
           <span className="text-xs font-bold text-slate-500">إجمالي المبلغ المحصل</span>
           <p className="text-2xl sm:text-3xl font-black text-emerald-600">{totalCollected} ج.م</p>
-          <p className="text-[11px] text-slate-400">سعر الاشتراك: 150 ج.م / طالب</p>
+          <p className="text-[11px] text-slate-400">سعر الاشتراك: 250 ج.م / طالب</p>
         </div>
 
         <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 shadow-xs">

@@ -35,7 +35,7 @@ function BarcodeItem({ student, groupName }: { student: Student; groupName: stri
   }, [student.code]);
 
   return (
-    <div className="border-2 border-dashed border-slate-300 rounded-2xl p-3.5 bg-white text-slate-900 flex flex-col justify-between h-72 shadow-xs relative overflow-hidden">
+    <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 print:border-slate-300 rounded-2xl p-3.5 bg-white text-slate-900 flex flex-col justify-between h-72 shadow-xs relative overflow-hidden">
       {/* Card Header */}
       <div className="flex items-start justify-between border-b border-slate-200 pb-1.5">
         <div>
@@ -79,8 +79,15 @@ export default function PrintCardsPage() {
   const [data, setData] = useState<SystemData | null>(null);
   const [selectedGroupFilter, setSelectedGroupFilter] = useState('ALL');
 
-  useEffect(() => {
+  const loadData = () => {
     setData(db.getData());
+  };
+
+  useEffect(() => {
+    db.syncFromSupabase().then(() => loadData());
+    loadData();
+    const unsub = db.subscribe(loadData);
+    return unsub;
   }, []);
 
   if (!data) return null;
@@ -98,13 +105,13 @@ export default function PrintCardsPage() {
   return (
     <div className="space-y-6 py-2">
       {/* Header (Hidden on Print) */}
-      <div className="no-print bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="no-print bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 flex items-center gap-2">
-            <Printer className="w-6 h-6 text-brand-600" />
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+            <Printer className="w-6 h-6 text-brand-600 dark:text-cyan-400" />
             توليد وطباعة كروت الطلاب (PDF)
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             تصدير شيت كروت باركود جاهزة للطباعة على ورق A4 والقص للطلاب الذين ليس معهم هواتف
           </p>
         </div>
@@ -113,7 +120,7 @@ export default function PrintCardsPage() {
           <select
             value={selectedGroupFilter}
             onChange={(e) => setSelectedGroupFilter(e.target.value)}
-            className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 bg-slate-50 focus:border-brand-500 focus:outline-none"
+            className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:border-brand-500 focus:outline-none"
           >
             <option value="ALL">جميع المجموعات ({activeStudents.length} كارت)</option>
             {data.groups.map((grp) => (
