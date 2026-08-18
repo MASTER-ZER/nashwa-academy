@@ -3,25 +3,30 @@
 import { useState, useEffect, useRef } from 'react';
 import { db } from '@/lib/storage';
 import { Student, Group, AttendanceRecord, Subscription, ExamResult, Exam } from '@/types';
-import { 
-  GraduationCap, 
-  QrCode, 
-  CalendarCheck, 
-  Award, 
-  CreditCard, 
-  LogOut, 
-  Download, 
-  Sparkles, 
-  CheckCircle2, 
-  Clock, 
-  User, 
-  AlertTriangle,
-  Layers,
-  ArrowRight,
-  ShieldCheck
+import {
+  GraduationCap,
+  QrCode,
+  CalendarCheck,
+  CreditCard,
+  Award,
+  Sparkles,
+  Search,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  LogOut,
+  Download,
+  Share2,
+  ChevronRight,
+  UserCheck,
+  Zap,
+  RotateCw,
+  Phone,
+  BarChart3
 } from 'lucide-react';
-import JsBarcode from 'jsbarcode';
+import confetti from 'canvas-confetti';
 import QRCode from 'qrcode';
+import JsBarcode from 'jsbarcode';
 
 export default function StudentPortalPage() {
   const [studentCode, setStudentCode] = useState('');
@@ -31,42 +36,37 @@ export default function StudentPortalPage() {
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [examResults, setExamResults] = useState<{ result: ExamResult; exam: Exam }[]>([]);
-  const [activeTab, setActiveTab] = useState<'card' | 'attendance' | 'exams' | 'subscription'>('card');
-  const [cardDisplayType, setCardDisplayType] = useState<'qr' | 'barcode'>('qr');
-  const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
+
+  const [activeTab, setActiveTab] = useState<'CARD' | 'ATTENDANCE' | 'SUBSCRIPTION' | 'EXAMS'>('CARD');
   const [errorMsg, setErrorMsg] = useState('');
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [cardDisplayType, setCardDisplayType] = useState<'QR' | 'BARCODE'>('QR');
 
-  const barcodeRef = useRef<SVGSVGElement | null>(null);
+  const barcodeSvgRef = useRef<SVGSVGElement | null>(null);
 
-  // Check saved session in localStorage
+  // Auto-login from localStorage if available
   useEffect(() => {
     const savedCode = localStorage.getItem('logged_student_code');
     if (savedCode) {
+      setStudentCode(savedCode);
       loadStudentData(savedCode);
     }
   }, []);
 
-  // Generate QR Code & Barcode when student is active
+  // Generate QR & Barcode when student is active
   useEffect(() => {
     if (currentStudent) {
-      // Generate QR Code
       QRCode.toDataURL(currentStudent.code, {
         width: 320,
         margin: 2,
-        color: {
-          dark: '#0f172a',
-          light: '#ffffff',
-        },
-      }).then((url) => {
-        setQrCodeUrl(url);
-      }).catch((err) => {
-        console.error('QR code generation error', err);
-      });
+        color: { dark: '#091224', light: '#ffffff' },
+      })
+        .then((url) => setQrDataUrl(url))
+        .catch((err) => console.error('QR generation error', err));
 
-      // Generate 1D Barcode
-      if (barcodeRef.current) {
+      if (barcodeSvgRef.current) {
         try {
-          JsBarcode(barcodeRef.current, currentStudent.code, {
+          JsBarcode(barcodeSvgRef.current, currentStudent.code, {
             format: 'CODE128',
             lineColor: '#0f172a',
             width: 3,
@@ -84,7 +84,7 @@ export default function StudentPortalPage() {
   }, [currentStudent, activeTab, cardDisplayType]);
 
   const loadStudentData = async (code: string) => {
-    // 1. Sync from cloud first
+    // Sync fresh data from cloud
     await db.syncFromSupabase();
 
     const data = db.getData();
@@ -119,7 +119,7 @@ export default function StudentPortalPage() {
     return true;
   };
 
-  // Subscribe to real-time updates while on student portal
+  // Real-time reactive updates while on portal
   useEffect(() => {
     const unsub = db.subscribe(() => {
       const savedCode = localStorage.getItem('logged_student_code');
@@ -150,7 +150,7 @@ export default function StudentPortalPage() {
     const data = db.getData();
     const std = data.students.find((s) => s.code === studentCode.trim());
     if (!std) {
-      setErrorMsg('كود الطالب غير صحيح أو بانتظار اعتماد المس');
+      setErrorMsg('كود الطالب غير مسجل أو بانتظار اعتماد المس');
       return;
     }
 
@@ -181,376 +181,384 @@ export default function StudentPortalPage() {
     isPaid: false,
   };
 
-  if (!currentStudent) {
-    return (
-      <div className="max-w-md mx-auto py-8 space-y-6">
-        <div className="text-center space-y-2">
-          <div className="w-16 h-16 rounded-3xl bg-brand-50 text-brand-600 border border-brand-100 flex items-center justify-center mx-auto shadow-sm">
-            <GraduationCap className="w-8 h-8" />
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900">بوابة الطالب وولي الأمر</h1>
-          <p className="text-xs text-slate-500 max-w-sm mx-auto">
-            سجل الدخول بكود الطالب الخاص بك لمتابعة الباركود والدرجات والاشتراك الشهري
-          </p>
-        </div>
-
-        <form onSubmit={handleLogin} className="bg-white border border-slate-200/80 rounded-3xl p-6 sm:p-8 shadow-sm space-y-4">
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-700">كود الطالب (Student Code)</label>
-            <input
-              type="text"
-              placeholder="مثال: 101"
-              value={studentCode}
-              onChange={(e) => setStudentCode(e.target.value)}
-              className="w-full px-4 py-3 text-sm rounded-xl border border-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 font-bold"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-700">رقم هاتف الطالب (اختياري للتأكيد)</label>
-            <input
-              type="tel"
-              placeholder="مثال: 01012345678"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="w-full px-4 py-3 text-sm rounded-xl border border-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
-            />
+  return (
+    <div className="max-w-4xl mx-auto py-2 space-y-6">
+      {/* Login Screen (If Not Logged In) */}
+      {!currentStudent ? (
+        <div className="max-w-md mx-auto my-6 liquid-glass rounded-3xl p-8 space-y-6 shadow-2xl animate-ios-spring">
+          <div className="text-center space-y-3">
+            <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-brand-600 via-brand-500 to-cyan-400 text-white flex items-center justify-center mx-auto shadow-xl shadow-brand-500/25">
+              <GraduationCap className="w-8 h-8" />
+            </div>
+            <h1 className="text-2xl font-black text-slate-900 dark:text-white">بوابة الطالب وولي الأمر</h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-semibold">
+              أدخل كود الطالب الخاص بك لعرض كارت الـ QR الذكي، سجل الحضور، وحالة الاشتراك
+            </p>
           </div>
 
           {errorMsg && (
-            <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0" />
+            <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{errorMsg}</span>
             </div>
           )}
 
-          <button
-            type="submit"
-            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-brand-600 to-brand-700 hover:from-brand-700 hover:to-brand-800 text-white font-black text-sm shadow-md shadow-brand-600/20 transition active:scale-95"
-          >
-            تسجيل الدخول 🚀
-          </button>
-
-          {/* Quick Demo Logins */}
-          <div className="pt-4 border-t border-slate-100 space-y-2">
-            <p className="text-[11px] text-slate-400 font-bold text-center">أو جرب الدخول المباشر كطالب تجريبي:</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickDemoLogin('101')}
-                className="p-2.5 text-xs font-bold rounded-xl bg-slate-50 hover:bg-brand-50 text-slate-700 hover:text-brand-600 border border-slate-200/60 transition text-center"
-              >
-                👤 إياد محمد (#101)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickDemoLogin('102')}
-                className="p-2.5 text-xs font-bold rounded-xl bg-slate-50 hover:bg-brand-50 text-slate-700 hover:text-brand-600 border border-slate-200/60 transition text-center"
-              >
-                👤 أحمد محمود (#102)
-              </button>
+          <form onSubmit={handleLogin} className="space-y-4 text-xs">
+            <div className="space-y-1.5">
+              <label className="font-bold text-slate-700 dark:text-slate-300">كود الطالب (3 أو 4 أرقام) *</label>
+              <input
+                type="text"
+                placeholder="مثال: 101"
+                value={studentCode}
+                onChange={(e) => setStudentCode(e.target.value)}
+                className="w-full px-4 py-3 text-lg font-black text-center tracking-widest font-mono rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+                required
+              />
             </div>
-          </div>
-        </form>
-      </div>
-    );
-  }
 
-  return (
-    <div className="max-w-2xl mx-auto py-4 space-y-6">
-      {/* Student Profile Card Header (Apple Wallet Aesthetic) */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-brand-950 text-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-800">
-        <div className="absolute -top-12 -left-12 w-64 h-64 bg-brand-500/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-12 -right-12 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-        
-        <div className="relative z-10 flex items-start justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-cyan-200 text-xs font-bold backdrop-blur">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>الصف الأول الثانوي • علوم متكاملة</span>
+            <div className="space-y-1.5">
+              <label className="font-bold text-slate-500 dark:text-slate-400">
+                رقم هاتف الطالب أو ولي الأمر (اختياري للتأكيد)
+              </label>
+              <input
+                type="tel"
+                placeholder="01012345678"
+                dir="ltr"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+              />
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight">{currentStudent.name}</h1>
-            <p className="text-xs text-slate-300 flex items-center gap-1.5 font-medium">
-              <Clock className="w-3.5 h-3.5 text-cyan-400" />
-              <span>{group ? group.name : 'مجموعة غير محددة'}</span>
-            </p>
-          </div>
 
-          <div className="text-left space-y-1">
-            <span className="text-[10px] text-slate-400 block font-bold">كود الطالب:</span>
-            <span className="text-2xl sm:text-3xl font-black text-cyan-300 font-mono tracking-wider">
-              #{currentStudent.code}
-            </span>
             <button
-              onClick={handleLogout}
-              className="inline-flex items-center gap-1 text-xs text-rose-300 hover:text-rose-200 pt-1 font-bold"
+              type="submit"
+              className="w-full py-3.5 rounded-2xl bg-brand-600 hover:bg-brand-700 active:scale-95 text-white font-black text-sm shadow-xl shadow-brand-600/25 transition"
             >
-              <LogOut className="w-3 h-3" />
-              خروج
+              عرض كارت الطالب الآن 📲
             </button>
-          </div>
-        </div>
+          </form>
 
-        {/* Quick Summary Badges */}
-        <div className="grid grid-cols-3 gap-2 mt-6 pt-5 border-t border-white/10 text-center">
-          <div className="bg-white/10 rounded-2xl p-3 backdrop-blur border border-white/10">
-            <span className="text-[10px] text-slate-300 block font-bold">الحضور المسجل</span>
-            <span className="text-sm font-black text-white">{attendance.length} حصص</span>
-          </div>
-
-          <div className="bg-white/10 rounded-2xl p-3 backdrop-blur border border-white/10">
-            <span className="text-[10px] text-slate-300 block font-bold">امتحان الباب الأول</span>
-            <span className="text-sm font-black text-cyan-300">
-              {examResults.length > 0 ? `${examResults[0].result.score}/20` : '—'}
-            </span>
-          </div>
-
-          <div className="bg-white/10 rounded-2xl p-3 backdrop-blur border border-white/10">
-            <span className="text-[10px] text-slate-300 block font-bold">اشتراك أكتوبر</span>
-            <span className={`text-xs font-black ${currentMonthSub.isPaid ? 'text-emerald-400' : 'text-rose-400'}`}>
-              {currentMonthSub.isPaid ? 'مسدد ✅' : 'مستحق ⚠️'}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Tabs Navigation */}
-      <div className="flex bg-slate-200/70 p-1.5 rounded-2xl gap-1 text-xs font-bold text-slate-700">
-        <button
-          onClick={() => setActiveTab('card')}
-          className={`flex-1 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 ${
-            activeTab === 'card' ? 'bg-white text-brand-700 shadow-sm' : 'hover:text-slate-900'
-          }`}
-        >
-          <QrCode className="w-4 h-4" />
-          <span>كارت الباركود والـ QR</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('attendance')}
-          className={`flex-1 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 ${
-            activeTab === 'attendance' ? 'bg-white text-brand-700 shadow-sm' : 'hover:text-slate-900'
-          }`}
-        >
-          <CalendarCheck className="w-4 h-4" />
-          <span>سجل الحضور</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('exams')}
-          className={`flex-1 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 ${
-            activeTab === 'exams' ? 'bg-white text-brand-700 shadow-sm' : 'hover:text-slate-900'
-          }`}
-        >
-          <Award className="w-4 h-4" />
-          <span>الامتحانات</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('subscription')}
-          className={`flex-1 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 ${
-            activeTab === 'subscription' ? 'bg-white text-brand-700 shadow-sm' : 'hover:text-slate-900'
-          }`}
-        >
-          <CreditCard className="w-4 h-4" />
-          <span>الاشتراك</span>
-        </button>
-      </div>
-
-      {/* Tab 1: Digital QR / Barcode Card */}
-      {activeTab === 'card' && (
-        <div className="bg-white border border-slate-200/80 rounded-3xl p-6 sm:p-8 shadow-sm text-center space-y-6">
-          <div className="space-y-1">
-            <h2 className="text-lg font-black text-slate-900">بطاقة الحضور الرقمية</h2>
-            <p className="text-xs text-slate-500">
-              قم بتوجيه رمز الـ QR أمام كاميرا السكانر عند دخول قاعة الدرس
-            </p>
-          </div>
-
-          {/* Toggle between QR and 1D Barcode */}
-          <div className="inline-flex bg-slate-100 p-1 rounded-xl gap-1 text-xs font-bold mx-auto">
-            <button
-              onClick={() => setCardDisplayType('qr')}
-              className={`px-4 py-1.5 rounded-lg transition ${
-                cardDisplayType === 'qr'
-                  ? 'bg-brand-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              رمز QR السريع (موصى به) 📱
-            </button>
-            <button
-              onClick={() => setCardDisplayType('barcode')}
-              className={`px-4 py-1.5 rounded-lg transition ${
-                cardDisplayType === 'barcode'
-                  ? 'bg-brand-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              الباركود الخطي (1D) 📊
-            </button>
-          </div>
-
-          {/* Card Box */}
-          <div className="p-6 sm:p-8 bg-slate-50 border-2 border-dashed border-slate-300 rounded-3xl inline-block mx-auto min-w-[280px] shadow-inner">
-            {cardDisplayType === 'qr' ? (
-              <div className="space-y-3">
-                {qrCodeUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={qrCodeUrl}
-                    alt={`QR Code #${currentStudent.code}`}
-                    className="w-52 h-52 mx-auto rounded-2xl shadow-sm bg-white p-2 border border-slate-200/80"
-                  />
-                ) : (
-                  <div className="w-52 h-52 mx-auto flex items-center justify-center text-slate-400">
-                    جاري التوليد...
-                  </div>
-                )}
-                <span className="text-2xl font-black text-brand-700 font-mono tracking-wider block">
-                  #{currentStudent.code}
-                </span>
-              </div>
-            ) : (
-              <div className="space-y-2 py-4">
-                <svg ref={barcodeRef} className="mx-auto" />
-              </div>
-            )}
-
-            <div className="mt-4 pt-3 border-t border-slate-200 text-xs font-bold text-slate-700">
-              {currentStudent.name} • {group?.name}
-            </div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200 text-xs text-emerald-900 leading-relaxed text-right flex items-center gap-2.5">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-            <span>
-              ⚡ <strong>رمز QR يقرأ في ثانية:</strong> يمكنك الاحتفاظ بلقطة شاشة (Screenshot) لهذا الكارت وإظهاره من شاشة الموبايل في كل حصة.
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Tab 2: Attendance Log */}
-      {activeTab === 'attendance' && (
-        <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-slate-900">سجل حضور الحصص</h2>
-            <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-200">
-              إجمالي الحضور: {attendance.length}
-            </span>
-          </div>
-
-          {attendance.length === 0 ? (
-            <div className="text-center py-12 text-slate-400 space-y-2 border-2 border-dashed border-slate-200 rounded-2xl">
-              <CalendarCheck className="w-8 h-8 mx-auto text-slate-300" />
-              <p className="text-xs font-semibold">لم يتم تسجيل أي حضور حتى الآن.</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {attendance.map((rec) => (
-                <div key={rec.id} className="py-3.5 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-                      <CheckCircle2 className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-900">
-                        {new Date(rec.scannedAt).toLocaleDateString('ar-EG', {
-                          weekday: 'long',
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                        })}
-                      </p>
-                      <p className="text-[11px] text-slate-500">
-                        الساعة {new Date(rec.scannedAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg">
-                    حاضر ✅
-                  </span>
-                </div>
+          {/* Quick Demo Student Picker for test */}
+          <div className="pt-3 border-t border-slate-200/50 dark:border-slate-800 space-y-2">
+            <p className="text-[11px] text-slate-400 text-center font-bold">حسابات تجريبية سريعة للتجربة:</p>
+            <div className="flex flex-wrap items-center justify-center gap-1.5">
+              {['101', '102', '103'].map((c) => (
+                <button
+                  key={c}
+                  onClick={() => handleQuickDemoLogin(c)}
+                  className="px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-brand-50 dark:hover:bg-brand-950 text-slate-700 dark:text-slate-300 hover:text-brand-600 font-mono font-bold text-xs transition"
+                >
+                  كود #{c}
+                </button>
               ))}
             </div>
-          )}
+          </div>
         </div>
-      )}
-
-      {/* Tab 3: Exam Results */}
-      {activeTab === 'exams' && (
-        <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-4">
-          <h2 className="text-base font-bold text-slate-900">نتائج الامتحانات الورقية</h2>
-
-          {examResults.length === 0 ? (
-            <div className="text-center py-12 text-slate-400 space-y-2 border-2 border-dashed border-slate-200 rounded-2xl">
-              <Award className="w-8 h-8 mx-auto text-slate-300" />
-              <p className="text-xs font-semibold">لا توجد نتائج امتحانات مرصودة حالياً.</p>
+      ) : (
+        /* Logged-In Student Dashboard */
+        <div className="space-y-6 animate-ios-spring">
+          {/* Header Strip with Student Details */}
+          <div className="p-5 sm:p-6 rounded-3xl liquid-glass flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+            <div className="flex items-center gap-3.5">
+              <div className="w-13 h-13 rounded-2xl bg-gradient-to-tr from-brand-700 to-cyan-500 text-white flex items-center justify-center font-mono font-black text-lg shadow-lg shadow-brand-500/25">
+                #{currentStudent.code}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
+                    {currentStudent.name}
+                  </h1>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                      currentStudent.status === 'ACTIVE'
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                        : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                    }`}
+                  >
+                    {currentStudent.status === 'ACTIVE' ? 'معتمد ونشط ✅' : 'معلق ⏳'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {group ? group.name : 'العلوم المتكاملة • أولى ثانوي'}
+                </p>
+              </div>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {examResults.map(({ result, exam }) => {
-                const percentage = Math.round((result.score / exam.totalScore) * 100);
-                return (
-                  <div key={result.id} className="p-5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2.5">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="text-sm font-bold text-slate-900">{exam.title}</h3>
-                        <p className="text-[11px] text-slate-500">تاريخ الامتحان: {exam.date}</p>
-                      </div>
-                      <div className="text-left">
-                        <span className="text-xl font-black text-brand-600">
-                          {result.score} <span className="text-xs text-slate-400 font-normal">/ {exam.totalScore}</span>
-                        </span>
-                        <span className="block text-[11px] font-bold text-emerald-600">({percentage}%)</span>
-                      </div>
-                    </div>
-                    {result.feedback && (
-                      <p className="text-xs text-slate-700 bg-white p-3 rounded-xl border border-slate-200/80">
-                        💬 <strong>ملاحظة المس:</strong> {result.feedback}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* Tab 4: Subscriptions */}
-      {activeTab === 'subscription' && (
-        <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-slate-900">حالة الاشتراك الشهري</h2>
-            <span className="text-xs text-slate-500 font-semibold">اشتراك 8 حصص شهرياً</span>
+            <button
+              onClick={handleLogout}
+              className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950 text-slate-600 dark:text-slate-300 hover:text-rose-600 text-xs font-bold transition flex items-center gap-1.5 self-end sm:self-center"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>تبديل الحساب</span>
+            </button>
           </div>
 
-          <div className={`p-6 rounded-3xl border ${
-            currentMonthSub.isPaid 
-              ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900' 
-              : 'bg-rose-50/70 border-rose-200 text-rose-900'
-          } space-y-3`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-xs font-semibold block text-slate-500">شهر:</span>
-                <span className="text-xl font-black text-slate-900">{currentMonthSub.month}</span>
-              </div>
-              <span className={`px-4 py-1.5 text-xs font-black rounded-full shadow-xs ${
-                currentMonthSub.isPaid ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
-              }`}>
-                {currentMonthSub.isPaid ? 'تم السداد بنجاح ✅' : 'مستحق السداد ⚠️'}
-              </span>
-            </div>
+          {/* Navigation Tabs (Segmented iOS Controls) */}
+          <div className="flex items-center gap-1 p-1.5 rounded-2xl liquid-glass overflow-x-auto scrollbar-none">
+            {[
+              { id: 'CARD', label: 'كارت الهوية والباركود', icon: QrCode },
+              { id: 'ATTENDANCE', label: `سجل الحضور (${attendance.length})`, icon: CalendarCheck },
+              { id: 'SUBSCRIPTION', label: 'الاشتراك الشهري', icon: CreditCard },
+              { id: 'EXAMS', label: `الامتحانات (${examResults.length})`, icon: Award },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`flex-1 min-w-[120px] flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-200 active:scale-95 whitespace-nowrap ${
+                    isActive
+                      ? 'bg-brand-600 text-white shadow-md shadow-brand-600/25'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-800/60'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
 
-            <div className="text-xs pt-3 border-t border-slate-200/60 flex items-center justify-between text-slate-600">
-              <span>قيمة الاشتراك: <strong>{currentMonthSub.amount} جنيه</strong></span>
-              {currentMonthSub.paidAt && (
-                <span>تاريخ السداد: {new Date(currentMonthSub.paidAt).toLocaleDateString('ar-EG')}</span>
+          {/* TAB 1: Apple Wallet Pass Card View */}
+          {activeTab === 'CARD' && (
+            <div className="space-y-6 max-w-md mx-auto animate-ios-spring">
+              {/* Apple Wallet Pass Container */}
+              <div className="apple-wallet-pass p-7 text-white space-y-6">
+                {/* Pass Top Header */}
+                <div className="flex items-start justify-between border-b border-white/10 pb-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-500 to-cyan-400 flex items-center justify-center text-white shadow-md">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black tracking-tight">أكاديمية مس نشوى</h3>
+                      <p className="text-[10px] text-cyan-300 font-semibold">علوم متكاملة • أولى ثانوي</p>
+                    </div>
+                  </div>
+
+                  <span className="px-3 py-1 rounded-full text-xs font-mono font-black bg-white/15 border border-white/20 text-cyan-200">
+                    #{currentStudent.code}
+                  </span>
+                </div>
+
+                {/* Pass Student Details */}
+                <div className="grid grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-semibold">اسم الطالب</span>
+                    <span className="font-black text-sm text-white">{currentStudent.name}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-semibold">حالة الاشتراك</span>
+                    <span
+                      className={`inline-flex items-center gap-1 text-xs font-bold ${
+                        currentMonthSub.isPaid ? 'text-emerald-400' : 'text-amber-400'
+                      }`}
+                    >
+                      {currentMonthSub.isPaid ? 'مسدد (أكتوبر) ✅' : 'مستحق (250 ج.م) ⚠️'}
+                    </span>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-[10px] text-slate-400 block font-semibold">المجموعة والموعد</span>
+                    <span className="font-bold text-xs text-slate-200">{group?.name || 'غير محدد'}</span>
+                  </div>
+                </div>
+
+                {/* QR Code / Barcode Switcher */}
+                <div className="bg-white rounded-2xl p-5 text-slate-900 text-center space-y-3 shadow-2xl">
+                  {cardDisplayType === 'QR' ? (
+                    <div className="flex flex-col items-center justify-center space-y-2">
+                      {qrDataUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={qrDataUrl} alt="QR Code" className="w-48 h-48 rounded-xl shadow-xs" />
+                      ) : (
+                        <div className="w-48 h-48 bg-slate-100 rounded-xl flex items-center justify-center text-xs text-slate-400">
+                          جاري توليد الكود...
+                        </div>
+                      )}
+                      <p className="text-[11px] font-mono font-black text-slate-700">كود الطالب: #{currentStudent.code}</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-4">
+                      <svg ref={barcodeSvgRef} className="max-w-full" />
+                    </div>
+                  )}
+
+                  {/* Switch between QR & Barcode */}
+                  <div className="flex items-center justify-center gap-2 pt-2 border-t border-slate-100">
+                    <button
+                      onClick={() => setCardDisplayType('QR')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+                        cardDisplayType === 'QR'
+                          ? 'bg-brand-600 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      رمز الـ QR
+                    </button>
+                    <button
+                      onClick={() => setCardDisplayType('BARCODE')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+                        cardDisplayType === 'BARCODE'
+                          ? 'bg-brand-600 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      الباركود الشريطي
+                    </button>
+                  </div>
+                </div>
+
+                {/* Pass Footer */}
+                <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
+                  <span>كارت حضور رسمي معتمد</span>
+                  <span>أكاديمية مس نشوى {new Date().getFullYear()}</span>
+                </div>
+              </div>
+
+              {/* Instructions below pass */}
+              <div className="p-4 rounded-2xl liquid-glass text-center text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                💡 أظهر هذا الكارت أمام كاميرا السكانر في مدخل الحصة لتسجيل حضورك في ثانية واحدة.
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: Attendance History */}
+          {activeTab === 'ATTENDANCE' && (
+            <div className="p-6 rounded-3xl liquid-glass space-y-4 animate-ios-spring">
+              <div className="flex items-center justify-between border-b border-slate-200/50 dark:border-slate-800 pb-3">
+                <h3 className="font-black text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                  <CalendarCheck className="w-5 h-5 text-emerald-600" />
+                  سجل الحضور والغياب للدروس
+                </h3>
+                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                  {attendance.length} حصص مسجلة
+                </span>
+              </div>
+
+              {attendance.length === 0 ? (
+                <div className="text-center py-12 space-y-2 text-slate-400">
+                  <Clock className="w-10 h-10 mx-auto opacity-40" />
+                  <p className="text-xs font-semibold">لم يتم تسجيل حضورك في أي حصة بعد.</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {attendance.map((rec) => {
+                    const dateObj = new Date(rec.scannedAt);
+                    const formattedDate = dateObj.toLocaleDateString('ar-EG', {
+                      weekday: 'long',
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    });
+                    const formattedTime = dateObj.toLocaleTimeString('ar-EG', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    });
+
+                    return (
+                      <div
+                        key={rec.id}
+                        className="p-4 rounded-2xl bg-white/70 dark:bg-slate-900/70 border border-slate-200/60 dark:border-slate-800 flex items-center justify-between shadow-2xs"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                            <CheckCircle2 className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-slate-900 dark:text-white">{formattedDate}</div>
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                              توقيت المسح: {formattedTime}
+                            </div>
+                          </div>
+                        </div>
+
+                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                          {rec.status === 'MAKEUP' ? 'تعويض حصة 🔄' : 'حاضر ✅'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
-          </div>
+          )}
+
+          {/* TAB 3: Subscriptions */}
+          {activeTab === 'SUBSCRIPTION' && (
+            <div className="p-6 rounded-3xl liquid-glass space-y-4 animate-ios-spring">
+              <div className="flex items-center justify-between border-b border-slate-200/50 dark:border-slate-800 pb-3">
+                <h3 className="font-black text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-brand-600" />
+                  الاشتراكات الشهرية
+                </h3>
+                <span className="text-xs font-bold text-slate-500">قيمة الاشتراك: 250 ج.م</span>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-white/70 dark:bg-slate-900/70 border border-slate-200/60 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h4 className="font-black text-slate-900 dark:text-white text-sm">اشتراك شهر أكتوبر 2026</h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">شامل 8 حصص ومذكرات الشرح والمراجعة</p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <span className="text-base font-black font-mono text-slate-900 dark:text-white">250 ج.م</span>
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-bold ${
+                      currentMonthSub.isPaid
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                        : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                    }`}
+                  >
+                    {currentMonthSub.isPaid ? 'تم السداد بنجاح ✅' : 'مستحق الدفع ⏳'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: Exams & Grades */}
+          {activeTab === 'EXAMS' && (
+            <div className="p-6 rounded-3xl liquid-glass space-y-4 animate-ios-spring">
+              <div className="flex items-center justify-between border-b border-slate-200/50 dark:border-slate-800 pb-3">
+                <h3 className="font-black text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                  <Award className="w-5 h-5 text-amber-500" />
+                  درجات وتقييمات الامتحانات
+                </h3>
+                <span className="text-xs font-bold text-slate-500">{examResults.length} امتحانات مرصودة</span>
+              </div>
+
+              {examResults.length === 0 ? (
+                <div className="text-center py-12 space-y-2 text-slate-400">
+                  <Award className="w-10 h-10 mx-auto opacity-40" />
+                  <p className="text-xs font-semibold">لم يتم رصد نتائج امتحانات لهذا الطالب بعد.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {examResults.map(({ result, exam }) => (
+                    <div
+                      key={result.id}
+                      className="p-5 rounded-2xl bg-white/70 dark:bg-slate-900/70 border border-slate-200/60 dark:border-slate-800 space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-black text-slate-900 dark:text-white text-xs sm:text-sm">{exam.title}</h4>
+                        <div className="flex items-center gap-1 font-mono font-black text-sm">
+                          <span className="text-brand-600 dark:text-cyan-400 text-base">{result.score}</span>
+                          <span className="text-slate-400">/ {exam.totalScore}</span>
+                        </div>
+                      </div>
+
+                      {result.feedback && (
+                        <p className="text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/80 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                          💬 <strong>ملاحظة مس نشوى:</strong> {result.feedback}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

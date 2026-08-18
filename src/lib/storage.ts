@@ -535,17 +535,6 @@ class StorageService {
           time: '00:00',
         };
         data.sessions.push(session);
-        if (supabase) {
-          supabase.from('sessions').upsert({
-            id: session.id,
-            group_id: session.groupId,
-            title: session.title,
-            date: session.date,
-            time: session.time,
-          }, { onConflict: 'id' }).then(({ error }) => {
-            if (error) console.error('Supabase session upsert error:', error);
-          });
-        }
       }
       sessionId = session.id;
     }
@@ -585,10 +574,20 @@ class StorageService {
     data.attendance.push(newRecord);
     this.saveData(data);
 
-    // Save to Supabase Cloud
+    // Save to Supabase Cloud: ensure session exists first, then insert attendance
     if (supabase) {
-      supabase.from('attendance').insert(attendanceToDb(newRecord)).then(({ error }) => {
-        if (error) console.error('Supabase attendance insert error:', error);
+      const client = supabase;
+      client.from('sessions').upsert({
+        id: sessionId,
+        group_id: params.activeGroupId,
+        title: `حصة ${todayStr}`,
+        date: todayStr,
+        time: '00:00',
+      }, { onConflict: 'id' }).then(({ error: sessErr }) => {
+        if (sessErr) console.error('Supabase session upsert error:', sessErr);
+        client.from('attendance').insert(attendanceToDb(newRecord)).then(({ error: attErr }) => {
+          if (attErr) console.error('Supabase attendance insert error:', attErr);
+        });
       });
     }
 
