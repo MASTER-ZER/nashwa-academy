@@ -85,6 +85,11 @@ class SoundEngine {
     }
   }
 
+  // Error Beep (Not found / Unregistered code)
+  playErrorBeep() {
+    this.playWarningAlert();
+  }
+
   // Neutral / Info Sound (e.g. duplicate scan already processed)
   playInfoSound() {
     try {

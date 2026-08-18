@@ -101,200 +101,191 @@ export default function ScannerPage() {
   const handleGroupChange = (newGroupId: string) => {
     setSelectedGroupId(newGroupId);
     syncSessionAttendance(newGroupId);
+    setScanResult(null);
   };
 
-  // Process a scanned code
-  const processCode = useCallback((code: string) => {
+  // Core scan processor
+  const processCode = useCallback((rawCode: string) => {
+    const cleanCode = rawCode.trim();
+    if (!cleanCode) return;
+
+    // Debounce duplicate scans within 2 seconds
     const now = Date.now();
-    if (lastScannedCodeRef.current === code && now - lastScanTimeRef.current < 2000) {
+    if (cleanCode === lastScannedCodeRef.current && now - lastScanTimeRef.current < 2500) {
       return;
     }
-    lastScannedCodeRef.current = code;
+    lastScannedCodeRef.current = cleanCode;
     lastScanTimeRef.current = now;
 
-    const res = db.scanAttendance({
-      scannedCode: code,
+    const result = db.scanAttendance({
+      scannedCode: cleanCode,
       activeGroupId: selectedGroupId,
+      deviceId: 'kiosk-main',
     });
 
     const timeStr = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-    if (res.type === 'SUCCESS_PAID') {
-      sound.playSuccessChime(); // "تين" sound
-      try {
-        confetti({ particleCount: 40, spread: 60 });
-      } catch {}
-
-      setScanResult({
-        type: 'SUCCESS_PAID',
-        student: res.student,
-        subscriptionPaid: true,
-        currentMonth: res.currentMonth,
-        timestamp: timeStr,
-      });
-
-      if (res.student) {
-        setRecentScans((prev) => [
-          { student: res.student!, time: timeStr, isPaid: true, type: 'حضور مسدد ✅' },
-          ...prev.filter((p) => p.student.id !== res.student!.id).slice(0, 24),
-        ]);
-      }
-    } else if (res.type === 'SUCCESS_UNPAID') {
-      sound.playWarningAlert(); // Warning beep
-      setScanResult({
-        type: 'SUCCESS_UNPAID',
-        student: res.student,
-        subscriptionPaid: false,
-        currentMonth: res.currentMonth,
-        timestamp: timeStr,
-      });
-
-      if (res.student) {
-        setRecentScans((prev) => [
-          { student: res.student!, time: timeStr, isPaid: false, type: 'حضور غير مسدد ⚠️' },
-          ...prev.filter((p) => p.student.id !== res.student!.id).slice(0, 24),
-        ]);
-      }
-    } else if (res.type === 'ALREADY_RECORDED') {
-      sound.playInfoSound();
-      const recordedTime = res.record 
-        ? new Date(res.record.scannedAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
-        : timeStr;
-
-      setScanResult({
-        type: 'ALREADY_RECORDED',
-        student: res.student,
-        subscriptionPaid: res.subscriptionPaid,
-        timestamp: timeStr,
-        recordedAt: recordedTime,
-      });
-    } else {
-      sound.playWarningAlert();
+    if (result.type === 'NOT_FOUND') {
+      sound.playErrorBeep();
       setScanResult({
         type: 'NOT_FOUND',
         timestamp: timeStr,
       });
-    }
+    } else if (result.type === 'INACTIVE') {
+      sound.playWarningAlert();
+      setScanResult({
+        type: 'INACTIVE',
+        student: result.student,
+        timestamp: timeStr,
+      });
+    } else if (result.type === 'ALREADY_RECORDED') {
+      sound.playInfoSound();
+      const recordedTime = result.record
+        ? new Date(result.record.scannedAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
+        : timeStr;
 
-    setTimeout(() => {
-      setScanResult((curr) => (curr?.timestamp === timeStr ? null : curr));
-    }, 3500);
-  }, [selectedGroupId]);
-
-  // Start Camera safely
-  const startCamera = async () => {
-    try {
-      setCameraError('');
-      
-      if (html5QrCodeRef.current) {
+      setScanResult({
+        type: 'ALREADY_RECORDED',
+        student: result.student,
+        subscriptionPaid: result.subscriptionPaid,
+        currentMonth: result.currentMonth,
+        timestamp: timeStr,
+        recordedAt: recordedTime,
+      });
+    } else {
+      // SUCCESS (Paid or Unpaid)
+      if (result.subscriptionPaid) {
+        sound.playSuccessChime();
         try {
-          if (html5QrCodeRef.current.isScanning) {
-            await html5QrCodeRef.current.stop();
-          }
-          html5QrCodeRef.current.clear();
+          confetti({
+            particleCount: 50,
+            spread: 60,
+            origin: { y: 0.5 },
+          });
         } catch {}
+      } else {
+        sound.playWarningAlert();
       }
 
-      const supportedFormats = [
-        Html5QrcodeSupportedFormats.QR_CODE,
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39,
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.CODABAR,
-      ];
-
-      const qrScanner = new Html5Qrcode('qr-reader-target', {
-        formatsToSupport: supportedFormats,
-        verbose: false,
-        experimentalFeatures: {
-          useBarCodeDetectorIfSupported: true,
-        },
+      setScanResult({
+        type: result.subscriptionPaid ? 'SUCCESS_PAID' : 'SUCCESS_UNPAID',
+        student: result.student,
+        subscriptionPaid: result.subscriptionPaid,
+        currentMonth: result.currentMonth,
+        timestamp: timeStr,
       });
-      html5QrCodeRef.current = qrScanner;
 
-      await qrScanner.start(
-        { facingMode: facingMode },
-        {
-          fps: 20,
-          qrbox: (viewfinderWidth, viewfinderHeight) => {
-            const width = Math.min(viewfinderWidth - 10, 320);
-            const height = Math.min(viewfinderHeight - 10, 260);
-            return { width, height };
+      if (result.student) {
+        setRecentScans((prev) => [
+          {
+            student: result.student!,
+            time: timeStr,
+            isPaid: !!result.subscriptionPaid,
+            type: result.subscriptionPaid ? 'حضور مسدد' : 'غير مسدد',
           },
-          aspectRatio: 1.0,
-        },
+          ...prev,
+        ]);
+      }
+    }
+
+    // Auto-clear overlay after 5 seconds
+    setTimeout(() => {
+      setScanResult((curr) => (curr?.timestamp === timeStr ? null : curr));
+    }, 5000);
+  }, [selectedGroupId]);
+
+  // Start Camera
+  const startCamera = async () => {
+    setCameraError('');
+    setIsCameraActive(true);
+
+    try {
+      if (!html5QrCodeRef.current) {
+        html5QrCodeRef.current = new Html5Qrcode('qr-reader-target', {
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.QR_CODE,
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.UPC_A,
+          ],
+          verbose: false,
+        });
+      }
+
+      const config = {
+        fps: 25,
+        qrbox: { width: 280, height: 280 },
+        aspectRatio: 1.0,
+      };
+
+      await html5QrCodeRef.current.start(
+        { facingMode: facingMode },
+        config,
         (decodedText) => {
           processCode(decodedText);
         },
-        () => {}
+        () => {
+          // Frame scanned without code - ignore
+        }
       );
-
-      setIsCameraActive(true);
-    } catch (err: unknown) {
-      console.error('Camera start error', err);
-      const isNonSecureRemote = typeof window !== 'undefined' && !window.isSecureContext && window.location.hostname !== 'localhost';
-      if (isNonSecureRemote) {
-        setCameraError('⚠️ تنبيه أمني من متصفح الموبايل: متصفحات الهواتف تمنع تشغيل الكاميرا عبر IP الشبكة العادي (HTTP). يرجى تشغيل كشك السكانر على الكمبيوتر الرئيسي عبر (localhost) أو تفعيل HTTPS.');
-      } else {
-        setCameraError('تعذر تشغيل الكاميرا. يرجى التأكد من الضغط على "سماح / Allow" لإعطاء إذن الكاميرا للمتصفح.');
-      }
+    } catch (err: any) {
+      console.error('Camera start error:', err);
       setIsCameraActive(false);
+      setCameraError(
+        'تعذر الوصول للكاميرا. يرجى التأكد من إعطاء إذن الكاميرا للمتصفح واستخدام اتصال آمن HTTPS.'
+      );
     }
   };
 
-  // Stop Camera safely
+  // Stop Camera
   const stopCamera = async () => {
-    if (html5QrCodeRef.current) {
+    if (html5QrCodeRef.current && isCameraActive) {
       try {
-        if (html5QrCodeRef.current.isScanning) {
-          await html5QrCodeRef.current.stop();
-        }
+        await html5QrCodeRef.current.stop();
         html5QrCodeRef.current.clear();
       } catch (err) {
-        console.error('Camera stop error', err);
+        console.error('Error stopping camera:', err);
       }
       setIsCameraActive(false);
     }
   };
 
-  // Switch camera front/back
+  // Toggle Camera Front / Back
   const toggleFacingMode = async () => {
     await stopCamera();
-    const newMode = facingMode === 'environment' ? 'user' : 'environment';
-    setFacingMode(newMode);
+    setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'));
     setTimeout(() => {
       startCamera();
     }, 300);
   };
 
-  // Clean up on unmount
+  // Cleanup camera on unmount
   useEffect(() => {
     return () => {
       if (html5QrCodeRef.current) {
         try {
-          if (html5QrCodeRef.current.isScanning) {
-            html5QrCodeRef.current.stop().catch(() => {});
-          }
-          html5QrCodeRef.current.clear();
+          html5QrCodeRef.current.stop().catch(() => {});
         } catch {}
       }
     };
   }, []);
 
-  // Emergency Search Handler (Sub-5ms in-memory)
+  // Emergency Search handler
   const handleSearchChange = (q: string) => {
     setSearchQuery(q);
     if (!q.trim()) {
       setSearchResults([]);
       return;
     }
-    const query = q.trim().toLowerCase();
+    const cleanQ = q.trim().toLowerCase();
     const matches = students
       .filter((s) => s.status === 'ACTIVE')
-      .filter((s) => s.name.toLowerCase().includes(query) || s.code.includes(query) || s.phone.includes(query))
+      .filter(
+        (s) =>
+          s.name.toLowerCase().includes(cleanQ) ||
+          s.code.includes(cleanQ) ||
+          s.phone.includes(cleanQ)
+      )
       .slice(0, 5);
     setSearchResults(matches);
   };
@@ -309,7 +300,7 @@ export default function ScannerPage() {
     );
   };
 
-  // Reset / Clear Today's Session Attendance for fresh testing
+  // Reset / Clear Today's Session Attendance
   const handleResetSession = () => {
     if (confirm('هل تريد إعادة تعيين ومسح حضور هذه الحصة للبدء من جديد؟')) {
       db.clearSessionAttendance(selectedGroupId);
@@ -326,13 +317,13 @@ export default function ScannerPage() {
   return (
     <div className="space-y-6 max-w-5xl mx-auto py-2">
       {/* Top Bar: Group Selector & Session Reset */}
-      <div className="bg-white border border-slate-200/80 rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="space-y-1">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200 text-xs font-bold">
-            <Zap className="w-3.5 h-3.5 text-cyan-600" />
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800 text-xs font-bold">
+            <Zap className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
             <span>كشك السكانر الذكي فائق السرعة</span>
           </div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900">شاشة الحضور الذكية</h1>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">شاشة الحضور الذكية</h1>
         </div>
 
         {/* Group Selector Dropdown & Reset Action */}
@@ -340,7 +331,7 @@ export default function ScannerPage() {
           <select
             value={selectedGroupId}
             onChange={(e) => handleGroupChange(e.target.value)}
-            className="w-full sm:w-64 px-3.5 py-2 text-xs font-bold rounded-xl border border-slate-300 bg-slate-50 focus:border-brand-500 focus:outline-none shadow-xs"
+            className="w-full sm:w-64 px-3.5 py-2.5 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:border-brand-500 focus:outline-none shadow-xs"
           >
             {groups.map((grp) => (
               <option key={grp.id} value={grp.id}>
@@ -351,7 +342,7 @@ export default function ScannerPage() {
 
           <button
             onClick={handleResetSession}
-            className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition flex items-center gap-1.5 shadow-xs"
+            className="px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition flex items-center gap-1.5 shadow-xs"
             title="إعادة تعيين الحضور للبدء من جديد"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -361,15 +352,15 @@ export default function ScannerPage() {
       </div>
 
       {sessionToast && (
-        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 shadow-sm animate-pulse-fast">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+        <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-2 shadow-sm animate-ios-spring">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
           <span>{sessionToast}</span>
         </div>
       )}
 
       {/* Main Grid: Cinematic Camera Viewport vs Recent Scans Feed */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left / Center Column: Camera Viewport */}
+        {/* Left Column: Camera Viewport */}
         <div className="lg:col-span-7 space-y-4">
           <div className="bg-slate-950 rounded-3xl p-5 sm:p-7 text-white relative overflow-hidden shadow-2xl border border-slate-800">
             {/* Visual Feedback Banner on Scan */}
@@ -462,36 +453,32 @@ export default function ScannerPage() {
 
               {/* Isolated Camera Target Container */}
               <div className="relative w-full max-w-[340px] aspect-square mx-auto rounded-3xl overflow-hidden bg-black/90 border-2 border-dashed border-cyan-500/40 flex items-center justify-center shadow-inner">
-                {/* Empty container target for html5-qrcode */}
                 <div id="qr-reader-target" className="w-full h-full" />
 
-                {/* Animated Scanner Crosshairs and Laser line */}
                 {isCameraActive && (
                   <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                    <div className="w-56 h-56 border-2 border-cyan-400/70 rounded-2xl relative shadow-lg shadow-cyan-500/20">
-                      <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-cyan-400" />
-                      <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-cyan-400" />
-                      <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-cyan-400" />
-                      <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-cyan-400" />
-                      {/* Laser Line */}
-                      <div className="w-full h-0.5 bg-gradient-to-r from-transparent via-cyan-400 to-transparent absolute top-1/2 -translate-y-1/2 animate-pulse" />
+                    <div className="w-56 h-56 border-2 border-cyan-400/80 rounded-2xl relative">
+                      <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-cyan-300" />
+                      <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-cyan-300" />
+                      <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-cyan-300" />
+                      <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-cyan-300" />
+                      <div className="w-full h-0.5 bg-gradient-to-r from-transparent via-cyan-400 to-transparent absolute top-1/2 -translate-y-1/2 animate-laser" />
                     </div>
                   </div>
                 )}
 
-                {/* Stopped Camera Placeholder */}
                 {!isCameraActive && (
-                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-6 space-y-4 text-slate-400 bg-slate-950">
-                    <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-cyan-400 shadow-md">
+                  <div className="text-center p-6 space-y-4">
+                    <div className="w-16 h-16 rounded-2xl bg-cyan-950/60 border border-cyan-500/30 flex items-center justify-center mx-auto text-cyan-400">
                       <QrCode className="w-8 h-8" />
                     </div>
-                    <div className="text-center space-y-1">
-                      <p className="text-xs font-bold text-slate-300">الكاميرا متوقفة</p>
-                      <p className="text-[11px] text-slate-500">اضغط على الزر أدناه لتشغيل الكاميرا ومسح الكروت</p>
+                    <div className="space-y-1">
+                      <p className="font-bold text-sm text-slate-200">الكاميرا متوقفة</p>
+                      <p className="text-[11px] text-slate-400">اضغط على الزر أدناه لتشغيل الكاميرا ومسح الكروت</p>
                     </div>
                     <button
                       onClick={startCamera}
-                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-bold text-xs shadow-lg shadow-emerald-500/20 transition active:scale-95 flex items-center gap-2"
+                      className="px-6 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-black text-xs shadow-lg shadow-emerald-500/30 transition flex items-center gap-2 mx-auto"
                     >
                       <Camera className="w-4 h-4" />
                       تشغيل الكاميرا الآن 📹
@@ -500,44 +487,47 @@ export default function ScannerPage() {
                 )}
               </div>
 
-              {isCameraActive && (
-                <div className="text-center pt-1">
-                  <button
-                    onClick={stopCamera}
-                    className="text-xs text-rose-400 hover:text-rose-300 font-bold underline"
-                  >
-                    إيقاف الكاميرا
-                  </button>
+              {cameraError && (
+                <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-800 text-rose-300 text-xs font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{cameraError}</span>
                 </div>
               )}
 
-              {cameraError && (
-                <p className="text-xs text-rose-400 text-center font-bold">{cameraError}</p>
+              {isCameraActive && (
+                <div className="flex items-center justify-center gap-2 pt-2">
+                  <button
+                    onClick={stopCamera}
+                    className="px-4 py-2 rounded-xl bg-rose-600/80 hover:bg-rose-700 text-white font-bold text-xs transition"
+                  >
+                    إيقاف الكاميرا ⏹️
+                  </button>
+                </div>
               )}
             </div>
           </div>
 
-          {/* Quick Simulation Buttons for Easy Testing without physical camera */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs space-y-2">
-            <div className="flex items-center justify-between text-[11px] font-bold text-slate-600">
-              <span>💡 تجربة سريعة لمحاكاة مسح الكروت (بنقرة واحدة):</span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {/* Quick Simulation Bar (For Testing without physical camera) */}
+          <div className="liquid-glass rounded-2xl p-4 space-y-2">
+            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block">
+              ⚡ تجربة مسح سريع بكود الطالب (للتجربة):
+            </span>
+            <div className="grid grid-cols-3 gap-2">
               <button
                 onClick={() => processCode('101')}
-                className="p-2.5 rounded-xl bg-emerald-50 text-emerald-900 border border-emerald-200/80 hover:bg-emerald-100 text-xs font-bold transition text-right shadow-xs"
+                className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100 text-xs font-bold transition text-right shadow-xs"
               >
                 🟢 إياد (#101) - مسدد
               </button>
               <button
                 onClick={() => processCode('102')}
-                className="p-2.5 rounded-xl bg-rose-50 text-rose-900 border border-rose-200/80 hover:bg-rose-100 text-xs font-bold transition text-right shadow-xs"
+                className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 hover:bg-rose-100 text-xs font-bold transition text-right shadow-xs"
               >
                 🔴 أحمد (#102) - غير مسدد
               </button>
               <button
                 onClick={() => processCode('103')}
-                className="p-2.5 rounded-xl bg-emerald-50 text-emerald-900 border border-emerald-200/80 hover:bg-emerald-100 text-xs font-bold transition text-right shadow-xs"
+                className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100 text-xs font-bold transition text-right shadow-xs"
               >
                 🟢 سارة (#103) - مسدد
               </button>
@@ -548,12 +538,12 @@ export default function ScannerPage() {
         {/* Right Column: Emergency Manual Search & Live Attendance Count */}
         <div className="lg:col-span-5 space-y-6">
           {/* Emergency Fast Search */}
-          <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-sm space-y-3">
+          <div className="liquid-glass rounded-3xl p-5 shadow-sm space-y-3">
             <div className="flex items-center gap-2">
-              <Search className="w-4 h-4 text-brand-600" />
-              <h2 className="text-sm font-bold text-slate-900">البحث اليدوي الفوري للطوارئ</h2>
+              <Search className="w-4 h-4 text-brand-600 dark:text-cyan-400" />
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">البحث اليدوي الفوري للطوارئ</h2>
             </div>
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
               في حال نسي الطالب موبايله أو الكارت، ابحث باسمه أو كوده لتسجيل حضوره بنقرة واحدة:
             </p>
 
@@ -563,18 +553,18 @@ export default function ScannerPage() {
                 placeholder="اكتب اسم الطالب أو الكود..."
                 value={searchQuery}
                 onChange={(e) => handleSearchChange(e.target.value)}
-                className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+                className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
               />
             </div>
 
             {/* Search Results Dropdown */}
             {searchResults.length > 0 && (
-              <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-slate-50">
+              <div className="divide-y divide-slate-100 dark:divide-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-800">
                 {searchResults.map((std) => (
-                  <div key={std.id} className="p-2.5 flex items-center justify-between hover:bg-white transition">
+                  <div key={std.id} className="p-2.5 flex items-center justify-between hover:bg-white dark:hover:bg-slate-700 transition">
                     <div>
-                      <p className="text-xs font-bold text-slate-900">{std.name}</p>
-                      <p className="text-[10px] text-slate-500 font-mono">كود: #{std.code} • {std.phone}</p>
+                      <p className="text-xs font-bold text-slate-900 dark:text-white">{std.name}</p>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">كود: #{std.code} • {std.phone}</p>
                     </div>
                     <button
                       onClick={() => {
@@ -593,20 +583,20 @@ export default function ScannerPage() {
           </div>
 
           {/* Recent Scans Feed in this session */}
-          <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-sm space-y-3">
+          <div className="liquid-glass rounded-3xl p-5 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-slate-500" />
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                 سجل الحاضرين في هذه الحصة
               </h2>
-              <span className="text-xs font-black text-brand-700 bg-brand-50 px-2.5 py-1 rounded-xl border border-brand-200/60">
+              <span className="text-xs font-black text-brand-700 dark:text-cyan-400 bg-brand-50 dark:bg-brand-950/80 px-2.5 py-1 rounded-xl border border-brand-200/60 dark:border-cyan-500/30">
                 {recentScans.length} طالب حاضر
               </span>
             </div>
 
             {recentScans.length === 0 ? (
-              <div className="text-center py-10 text-slate-400 space-y-2 border-2 border-dashed border-slate-200 rounded-2xl">
-                <QrCode className="w-8 h-8 mx-auto text-slate-300" />
+              <div className="text-center py-10 text-slate-400 space-y-2 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
+                <QrCode className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
                 <p className="text-xs font-semibold">في انتظار مسح أول كارت في هذه الحصة...</p>
               </div>
             ) : (
@@ -614,17 +604,19 @@ export default function ScannerPage() {
                 {recentScans.map((scan, idx) => (
                   <div
                     key={idx}
-                    className="p-3 rounded-2xl bg-slate-50 border border-slate-200/70 flex items-center justify-between text-xs hover:bg-slate-100/70 transition"
+                    className="p-3 rounded-2xl bg-white/70 dark:bg-slate-800/70 border border-slate-200/70 dark:border-slate-700/60 flex items-center justify-between text-xs hover:bg-white dark:hover:bg-slate-700 transition"
                   >
                     <div>
-                      <p className="font-bold text-slate-900">{scan.student.name}</p>
+                      <p className="font-bold text-slate-900 dark:text-white">{scan.student.name}</p>
                       <p className="text-[10px] text-slate-400 font-mono">
                         كود: #{scan.student.code} • الساعة {scan.time}
                       </p>
                     </div>
                     <span
                       className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                        scan.isPaid ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                        scan.isPaid
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                          : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
                       }`}
                     >
                       {scan.isPaid ? 'مسدد ✅' : 'غير مسدد ⚠️'}
