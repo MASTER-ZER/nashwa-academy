@@ -74,10 +74,10 @@ export default function DashboardOverviewPage() {
   };
 
   return (
-    <div className="space-y-8 py-2 max-w-7xl mx-auto">
+    <div className="space-y-6 py-2 max-w-7xl mx-auto">
       {/* Toast Notification for Instant Approval */}
       {approvalToast && (
-        <div className="bg-emerald-600 text-white p-4 rounded-2xl shadow-xl flex items-center justify-between animate-bounce-short">
+        <div className="bg-emerald-600 text-white p-4 rounded-2xl shadow-xl flex items-center justify-between animate-ios-spring">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center font-bold">
               <CheckCircle2 className="w-6 h-6 text-white" />
@@ -92,235 +92,143 @@ export default function DashboardOverviewPage() {
       )}
 
       {/* Hero Header */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-brand-950 via-brand-900 to-slate-900 rounded-3xl p-6 sm:p-10 text-white shadow-xl border border-brand-800/40">
-        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-80 h-80 bg-brand-500/15 rounded-full blur-3xl pointer-events-none" />
-        
-        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div className="space-y-2 max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-cyan-200 border border-white/10 text-xs font-bold backdrop-blur">
+      <div className="relative overflow-hidden bg-gradient-to-br from-brand-950 via-slate-900 to-brand-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl border border-brand-800/40">
+        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="space-y-1.5 max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-cyan-200 border border-white/10 text-xs font-bold backdrop-blur-xs">
               <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
-              <span>منصة الإدارة الذكية • علوم متكاملة</span>
+              <span>لوحة الإدارة المركزية • مس نشوى</span>
             </div>
-            <h1 className="text-2xl sm:text-4xl font-black tracking-tight leading-tight">
-              لوحة تحكم مس نشوى 🌸
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
+              أهلاً بكِ يا مس نشوى 🌸
             </h1>
-            <p className="text-xs sm:text-sm text-slate-300 font-normal leading-relaxed">
-              إدارة شاملة لحضور السنتر، اعتماد الطلاب الجدد، متابعة اشتراكات أكتوبر، ورصد درجات الامتحانات بضغطة زر.
+            <p className="text-slate-300 text-xs sm:text-sm">
+              إدارة طلبات التقديم، كشك السكانر، رصد درجات الامتحانات والاشتراكات الشهرية.
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-2.5">
             <Link
               href="/dashboard/scanner"
-              className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-black text-xs shadow-lg shadow-emerald-500/25 transition active:scale-95 flex items-center gap-2"
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-black text-xs shadow-lg shadow-emerald-500/25 transition"
             >
-              <QrCode className="w-4 h-4 text-white" />
-              تشغيل كشك السكانر 🚀
-            </Link>
-            <Link
-              href="/dashboard/attendance"
-              className="px-5 py-3.5 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs backdrop-blur transition flex items-center gap-2"
-            >
-              <CalendarCheck className="w-4 h-4 text-cyan-300" />
-              كشف الغياب اليومي
+              <QrCode className="w-4 h-4" />
+              فتح كشك السكانر ⚡
             </Link>
           </div>
         </div>
       </div>
 
-      {/* KPI Bento Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-xs hover:shadow-md transition space-y-2">
+      {/* Stats KPI Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="liquid-glass rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">الطلاب المعتمدين</span>
-            <div className="w-9 h-9 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">الطلاب المعتمدين</span>
+            <div className="p-2 rounded-xl bg-brand-50 dark:bg-brand-950 text-brand-600 dark:text-cyan-400">
               <Users className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-3xl font-black text-slate-900 tracking-tight">{activeStudents.length}</p>
-          <div className="flex items-center gap-1 text-[11px] text-emerald-600 font-bold">
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span>نشط في المجموعات</span>
+          <div className="mt-3">
+            <span className="text-2xl sm:text-3xl font-black font-mono text-slate-900 dark:text-white">{activeStudents.length}</span>
+            <span className="text-[11px] text-slate-400 block mt-0.5">طالب بالصف الأول الثانوي</span>
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-xs hover:shadow-md transition space-y-2">
+        <div className="liquid-glass rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-amber-500/30">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">طلبات التقديم المعلقة</span>
-            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+            <span className="text-xs font-bold text-amber-700 dark:text-amber-400">طلبات التقديم الجديدة</span>
+            <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400">
               <UserPlus className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-3xl font-black text-amber-600 tracking-tight">{pendingStudents.length}</p>
-          <p className="text-[11px] text-slate-400 font-semibold">بانتظار المراجعة والاعتماد</p>
+          <div className="mt-3">
+            <span className="text-2xl sm:text-3xl font-black font-mono text-amber-600 dark:text-amber-400">{pendingStudents.length}</span>
+            <span className="text-[11px] text-amber-700 dark:text-amber-400/80 block mt-0.5">بانتظار الموافقة والاعتماد</span>
+          </div>
         </div>
 
-        <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-xs hover:shadow-md transition space-y-2">
+        <div className="liquid-glass rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">تحصيل شهر أكتوبر</span>
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">تحصيل شهر أكتوبر</span>
+            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">
               <CreditCard className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-3xl font-black text-emerald-600 tracking-tight">
-            {paidSubsCount} <span className="text-sm text-slate-400 font-normal">/ {activeStudents.length}</span>
-          </p>
-          <p className="text-[11px] text-slate-500 font-bold">المحصل: {totalSubRevenue} ج.م</p>
+          <div className="mt-3">
+            <span className="text-2xl sm:text-3xl font-black font-mono text-emerald-600 dark:text-emerald-400">
+              {totalSubRevenue.toLocaleString()} <span className="text-xs font-bold font-sans">ج.م</span>
+            </span>
+            <span className="text-[11px] text-slate-400 block mt-0.5">{paidSubsCount} طلاب مسددين</span>
+          </div>
         </div>
 
-        <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-xs hover:shadow-md transition space-y-2">
+        <div className="liquid-glass rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">الامتحانات المرصودة</span>
-            <div className="w-9 h-9 rounded-xl bg-cyan-50 text-cyan-700 flex items-center justify-center">
-              <Award className="w-4 h-4" />
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">المجموعات الدراسية</span>
+            <div className="p-2 rounded-xl bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400">
+              <Clock className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-3xl font-black text-cyan-700 tracking-tight">{data.exams.length}</p>
-          <p className="text-[11px] text-slate-400 font-semibold">امتحانات ورقية مسجلة</p>
+          <div className="mt-3">
+            <span className="text-2xl sm:text-3xl font-black font-mono text-purple-600 dark:text-purple-400">{data.groups.length}</span>
+            <span className="text-[11px] text-slate-400 block mt-0.5">مجموعات نشطة</span>
+          </div>
         </div>
       </div>
 
-      {/* Quick Access Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-        <Link
-          href="/dashboard/students"
-          className="group bg-white border border-slate-200/80 hover:border-brand-500 p-4 rounded-2xl text-center space-y-2 shadow-xs transition hover:shadow-md"
-        >
-          <div className="w-11 h-11 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center mx-auto group-hover:scale-110 group-hover:bg-brand-600 group-hover:text-white transition">
-            <Users className="w-5 h-5" />
-          </div>
-          <span className="text-xs font-bold text-slate-800 block">دليل الطلاب</span>
-        </Link>
-
-        <Link
-          href="/dashboard/attendance"
-          className="group bg-white border border-slate-200/80 hover:border-emerald-500 p-4 rounded-2xl text-center space-y-2 shadow-xs transition hover:shadow-md"
-        >
-          <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto group-hover:scale-110 group-hover:bg-emerald-600 group-hover:text-white transition">
-            <CalendarCheck className="w-5 h-5" />
-          </div>
-          <span className="text-xs font-bold text-slate-800 block">كشف الغياب</span>
-        </Link>
-
-        <Link
-          href="/dashboard/subscriptions"
-          className="group bg-white border border-slate-200/80 hover:border-amber-500 p-4 rounded-2xl text-center space-y-2 shadow-xs transition hover:shadow-md"
-        >
-          <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto group-hover:scale-110 group-hover:bg-amber-600 group-hover:text-white transition">
-            <CreditCard className="w-5 h-5" />
-          </div>
-          <span className="text-xs font-bold text-slate-800 block">الاشتراكات المالية</span>
-        </Link>
-
-        <Link
-          href="/dashboard/exams"
-          className="group bg-white border border-slate-200/80 hover:border-cyan-500 p-4 rounded-2xl text-center space-y-2 shadow-xs transition hover:shadow-md"
-        >
-          <div className="w-11 h-11 rounded-2xl bg-cyan-50 text-cyan-700 flex items-center justify-center mx-auto group-hover:scale-110 group-hover:bg-cyan-700 group-hover:text-white transition">
-            <Award className="w-5 h-5" />
-          </div>
-          <span className="text-xs font-bold text-slate-800 block">الامتحانات والواتساب</span>
-        </Link>
-
-        <Link
-          href="/dashboard/print-cards"
-          className="group bg-white border border-slate-200/80 hover:border-purple-500 p-4 rounded-2xl text-center space-y-2 shadow-xs transition hover:shadow-md"
-        >
-          <div className="w-11 h-11 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto group-hover:scale-110 group-hover:bg-purple-600 group-hover:text-white transition">
-            <Printer className="w-5 h-5" />
-          </div>
-          <span className="text-xs font-bold text-slate-800 block">طباعة الكروت PDF</span>
-        </Link>
-
-        <Link
-          href="/dashboard/settings"
-          className="group bg-white border border-slate-200/80 hover:border-slate-400 p-4 rounded-2xl text-center space-y-2 shadow-xs transition hover:shadow-md"
-        >
-          <div className="w-11 h-11 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center mx-auto group-hover:scale-110 group-hover:bg-slate-900 group-hover:text-white transition">
-            <Settings className="w-5 h-5" />
-          </div>
-          <span className="text-xs font-bold text-slate-800 block">النسخ الاحتياطي</span>
-        </Link>
-      </div>
-
-      {/* Pending Registrations Section */}
-      <div className="bg-white border border-slate-200/80 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-100 pb-4">
-          <div>
-            <h2 className="text-lg sm:text-xl font-black text-slate-900 flex items-center gap-2.5">
-              <UserPlus className="w-5 h-5 text-amber-500" />
-              طلبات الانضمام الجديدة المعلقة ({pendingStudents.length})
+      {/* Pending Student Applications Review */}
+      <div className="liquid-glass rounded-3xl p-5 sm:p-6 space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-200/50 dark:border-slate-800 pb-3">
+          <div className="flex items-center gap-2">
+            <UserPlus className="w-5 h-5 text-amber-500" />
+            <h2 className="text-base font-black text-slate-900 dark:text-white">
+              طلبات تسجيل الطلاب الجديدة ({pendingStudents.length})
             </h2>
-            <p className="text-xs text-slate-500 mt-1">
-              الطلاب الذين قاموا بملء الاستمارة وبانتظار قبول المس وتوليد كود الحضور
-            </p>
           </div>
-          <span className="text-xs font-bold text-amber-800 bg-amber-50 px-3 py-1 rounded-full border border-amber-200/60">
-            {pendingStudents.length} بانتظار الاعتماد
-          </span>
+          <span className="text-xs text-slate-400">اعتماد فوري بنقرة واحدة</span>
         </div>
 
         {pendingStudents.length === 0 ? (
-          <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-3xl text-slate-400 space-y-2 bg-slate-50/50">
-            <UserCheck className="w-10 h-10 mx-auto text-emerald-500" />
-            <p className="text-xs font-bold text-slate-600">رائع! تم اعتماد كافة طلبات الطلاب ولا توجد طلبات معلقة حالياً ✅</p>
+          <div className="text-center py-10 space-y-2 text-slate-400">
+            <CheckCircle2 className="w-10 h-10 mx-auto text-emerald-500/60" />
+            <p className="text-xs font-bold">رائع! لا توجد طلبات تسجيل معلقة حالياً.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-3">
             {pendingStudents.map((std) => {
-              const requestedGroup = data.groups.find((g) => g.id === std.groupId);
+              const grp = data.groups.find((g) => g.id === std.groupId);
               return (
                 <div
                   key={std.id}
-                  className="bg-slate-50/80 border border-amber-200/80 rounded-3xl p-5 flex flex-col justify-between space-y-4 hover:bg-white hover:shadow-md transition"
+                  className="p-4 rounded-2xl bg-white/70 dark:bg-slate-800/70 border border-amber-200/60 dark:border-amber-950/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs"
                 >
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="text-base font-black text-slate-900">{std.name}</h3>
-                        <span className="text-xs font-mono font-bold text-amber-800 bg-amber-100/80 px-2.5 py-0.5 rounded-lg">
-                          كود مقترح: #{std.code}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 font-semibold">
-                        {new Date(std.registeredAt).toLocaleDateString('ar-EG')}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-400 font-mono font-black text-xs flex items-center justify-center">
+                        #{std.code}
                       </span>
+                      <h4 className="font-bold text-slate-900 dark:text-white text-sm">{std.name}</h4>
                     </div>
-
-                    <div className="text-xs text-slate-600 space-y-1.5 pt-2 border-t border-slate-200/60">
-                      <p className="flex items-center gap-2">
-                        <Phone className="w-3.5 h-3.5 text-brand-600" />
-                        هاتف الطالب: <strong className="font-mono text-slate-800">{std.phone}</strong>
-                      </p>
-                      <p className="flex items-center gap-2">
-                        <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                        ولي الأمر: <strong className="text-slate-800">{std.parentName}</strong> (<span className="font-mono">{std.parentPhone}</span>)
-                      </p>
-                      <p className="flex items-center gap-2">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                        العنوان: {std.address}
-                      </p>
-                      <p className="flex items-center gap-2 text-brand-800 font-bold">
-                        <Clock className="w-3.5 h-3.5 text-brand-600" />
-                        المجموعة: {requestedGroup ? requestedGroup.name : 'غير محدد'}
-                      </p>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 flex flex-wrap gap-x-4 gap-y-1 pt-1">
+                      <span>📱 هاتف الطالب: <strong className="font-mono text-slate-700 dark:text-slate-300">{std.phone}</strong></span>
+                      <span>👨‍👦 ولي الأمر: <strong className="text-slate-700 dark:text-slate-300">{std.parentName} ({std.parentPhone})</strong></span>
+                      <span>⏰ المجموعة: <strong className="text-brand-600 dark:text-cyan-400">{grp?.name}</strong></span>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 pt-2 border-t border-slate-200/60">
+                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                     <button
                       onClick={() => handleApprove(std)}
-                      className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white font-black text-xs shadow-md shadow-emerald-600/20 transition flex items-center justify-center gap-1.5 active:scale-95"
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs shadow-xs transition flex items-center gap-1"
                     >
                       <Check className="w-4 h-4" />
-                      قبول وتفعيل الباركود ✅
+                      <span>قبول واعتماد الطالب ✅</span>
                     </button>
                     <button
                       onClick={() => handleReject(std)}
-                      className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-slate-200 font-bold text-xs transition flex items-center justify-center gap-1"
+                      className="px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 text-rose-600 dark:text-rose-400 font-bold text-xs transition"
                     >
                       <X className="w-4 h-4" />
-                      رفض
                     </button>
                   </div>
                 </div>

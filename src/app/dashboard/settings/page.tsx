@@ -100,7 +100,7 @@ export default function SettingsDashboardPage() {
     reader.readAsText(file);
   };
 
-  // Save Group (Add or Edit)
+  // Save/Update Group
   const handleSaveGroup = (e: React.FormEvent) => {
     e.preventDefault();
     if (!groupFormData.name.trim()) return;
@@ -112,9 +112,10 @@ export default function SettingsDashboardPage() {
         name: groupFormData.name.trim(),
         time: groupFormData.time.trim(),
         days: daysArr,
+        academicYear: 'FIRST_SEC',
         maxStudents: Number(groupFormData.maxStudents) || 35,
       });
-      setStatusMsg({ type: 'success', text: 'تم تحديث بيانات المجموعة بنجاح ✅' });
+      setStatusMsg({ type: 'success', text: 'تم تعديل بيانات المجموعة بنجاح ✅' });
     } else {
       db.addGroup({
         name: groupFormData.name.trim(),
@@ -185,7 +186,7 @@ export default function SettingsDashboardPage() {
   return (
     <div className="space-y-6 py-2 max-w-5xl mx-auto">
       {/* Header */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm">
+      <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-sm">
         <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
           <Settings className="w-6 h-6 text-brand-600 dark:text-cyan-400" />
           لوحة التحكم الشاملة وإعدادات النظام
@@ -213,7 +214,7 @@ export default function SettingsDashboardPage() {
       )}
 
       {/* 1. Telegram Bot Automation Section */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
+      <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-cyan-50 dark:bg-cyan-950/50 text-cyan-600 dark:text-cyan-400 flex items-center justify-center">
@@ -237,7 +238,7 @@ export default function SettingsDashboardPage() {
               href="https://t.me/MissNashwa_bot"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-sm"
+              className="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-xs"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               فتح البوت في تليجرام
@@ -261,17 +262,17 @@ export default function SettingsDashboardPage() {
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+          <div className="p-3.5 rounded-2xl bg-white/70 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
             <div className="text-slate-500 dark:text-slate-400 font-semibold mb-1">معرّف الآدمن (Chat ID):</div>
             <div className="font-mono font-bold text-slate-900 dark:text-white">6602868710</div>
           </div>
-          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+          <div className="p-3.5 rounded-2xl bg-white/70 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
             <div className="text-slate-500 dark:text-slate-400 font-semibold mb-1">رابط الويب هوك السحابي:</div>
             <div className="font-mono font-bold text-slate-900 dark:text-white text-[11px] truncate">
               nashwa-academy.vercel.app/api/telegram
             </div>
           </div>
-          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+          <div className="p-3.5 rounded-2xl bg-white/70 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
             <div className="text-slate-500 dark:text-slate-400 font-semibold mb-1">قيمة الاشتراك المعتمدة:</div>
             <div className="font-bold text-emerald-600 dark:text-emerald-400">250 جنيه مصري / شهرياً</div>
           </div>
@@ -279,7 +280,7 @@ export default function SettingsDashboardPage() {
       </div>
 
       {/* 2. Groups Management Section */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
+      <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-brand-50 dark:bg-brand-950/50 text-brand-600 dark:text-cyan-400 flex items-center justify-center">
@@ -301,7 +302,7 @@ export default function SettingsDashboardPage() {
               setGroupFormData({ name: '', time: '01:00 PM', days: 'الأحد، الثلاثاء', maxStudents: 35 });
               setIsGroupModalOpen(true);
             }}
-            className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-sm"
+            className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-xs"
           >
             <PlusCircle className="w-4 h-4" />
             إضافة مجموعة جديدة ➕
@@ -315,7 +316,7 @@ export default function SettingsDashboardPage() {
             return (
               <div
                 key={grp.id}
-                className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 space-y-3 flex flex-col justify-between"
+                className="p-4 rounded-2xl bg-white/70 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-3 flex flex-col justify-between"
               >
                 <div>
                   <div className="flex items-center justify-between">
@@ -332,17 +333,17 @@ export default function SettingsDashboardPage() {
                   </p>
                 </div>
 
-                <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-slate-200 dark:border-slate-700/50">
+                <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-700/50">
                   <button
                     onClick={() => handleEditGroupClick(grp)}
-                    className="p-1.5 rounded-lg bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:text-brand-600 shadow-2xs text-xs flex items-center gap-1"
+                    className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:text-brand-600 shadow-2xs text-xs flex items-center gap-1"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
                     تعديل
                   </button>
                   <button
                     onClick={() => handleDeleteGroup(grp)}
-                    className="p-1.5 rounded-lg bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:text-rose-600 shadow-2xs text-xs flex items-center gap-1"
+                    className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:text-rose-600 shadow-2xs text-xs flex items-center gap-1"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     حذف
@@ -355,7 +356,7 @@ export default function SettingsDashboardPage() {
       </div>
 
       {/* 3. Database & Cloud Backup Section */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
+      <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
         <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
           <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
             <Database className="w-6 h-6" />
@@ -369,7 +370,7 @@ export default function SettingsDashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 space-y-2">
+          <div className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white/70 dark:bg-slate-800/40 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700 dark:text-slate-300">حفظ نسخة احتياطية محلية (JSON)</span>
               <Download className="w-4 h-4 text-brand-600" />
@@ -391,7 +392,7 @@ export default function SettingsDashboardPage() {
             )}
           </div>
 
-          <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 space-y-2">
+          <div className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white/70 dark:bg-slate-800/40 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700 dark:text-slate-300">استعادة البيانات من ملف (JSON)</span>
               <Upload className="w-4 h-4 text-emerald-600" />

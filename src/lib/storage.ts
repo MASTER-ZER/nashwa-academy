@@ -775,7 +775,7 @@ class StorageService {
         parent_notified: result.parentNotified,
         student_notified: result.studentNotified,
         graded_at: result.gradedAt,
-      }, { onConflict: 'id' }).then(({ error }) => {
+      }, { onConflict: 'exam_id,student_id' }).then(({ error }) => {
         if (error) console.error('Supabase exam result upsert error:', error);
       });
     }

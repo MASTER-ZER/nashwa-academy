@@ -105,7 +105,7 @@ export default function PrintCardsPage() {
   return (
     <div className="space-y-6 py-2">
       {/* Header (Hidden on Print) */}
-      <div className="no-print bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="no-print liquid-glass rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
             <Printer className="w-6 h-6 text-brand-600 dark:text-cyan-400" />
@@ -116,11 +116,11 @@ export default function PrintCardsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <select
             value={selectedGroupFilter}
             onChange={(e) => setSelectedGroupFilter(e.target.value)}
-            className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:border-brand-500 focus:outline-none"
+            className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:border-brand-500 focus:outline-none"
           >
             <option value="ALL">جميع المجموعات ({activeStudents.length} كارت)</option>
             {data.groups.map((grp) => (
@@ -132,7 +132,7 @@ export default function PrintCardsPage() {
 
           <button
             onClick={handlePrint}
-            className="px-5 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-md transition flex items-center gap-1.5 shrink-0"
+            className="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-md transition flex items-center gap-1.5 shrink-0"
           >
             <Printer className="w-4 h-4" />
             طباعة الكروت الآن 🖨️

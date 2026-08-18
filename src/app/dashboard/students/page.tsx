@@ -91,7 +91,7 @@ export default function StudentsDirectoryPage() {
   return (
     <div className="space-y-6 py-2">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 liquid-glass rounded-3xl p-5 sm:p-6 shadow-sm">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
             <Users className="w-6 h-6 text-brand-600 dark:text-cyan-400" />
@@ -102,18 +102,18 @@ export default function StudentsDirectoryPage() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white text-xs font-black shadow-md shadow-emerald-500/20 transition active:scale-95 flex items-center gap-2"
+            className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white text-xs font-black shadow-md shadow-emerald-500/20 transition active:scale-95 flex items-center justify-center gap-2"
           >
             <UserPlus className="w-4 h-4" />
-            إضافة طالب جديد مباشرة ➕
+            إضافة طالب جديد ➕
           </button>
 
           <Link
             href="/dashboard/print-cards"
-            className="px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-2"
+            className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center justify-center gap-2"
           >
             <QrCode className="w-4 h-4 text-cyan-300" />
             طباعة الكروت PDF
@@ -122,7 +122,7 @@ export default function StudentsDirectoryPage() {
       </div>
 
       {/* Filters & Search */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row gap-3">
+      <div className="liquid-glass rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
           <input
@@ -137,7 +137,7 @@ export default function StudentsDirectoryPage() {
         <select
           value={selectedGroupFilter}
           onChange={(e) => setSelectedGroupFilter(e.target.value)}
-          className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:border-brand-500 focus:outline-none sm:w-64"
+          className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:border-brand-500 focus:outline-none sm:w-64"
         >
           <option value="ALL">جميع المجموعات ({data.students.length})</option>
           {data.groups.map((grp) => (
@@ -148,11 +148,11 @@ export default function StudentsDirectoryPage() {
         </select>
       </div>
 
-      {/* Students Table / Grid */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden">
+      {/* Desktop Table View (Hidden on mobile) */}
+      <div className="hidden md:block liquid-glass rounded-3xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-right text-xs">
-            <thead className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-bold">
+            <thead className="bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-bold">
               <tr>
                 <th className="p-4">الكود</th>
                 <th className="p-4">اسم الطالب</th>
@@ -180,7 +180,7 @@ export default function StudentsDirectoryPage() {
                       <td className="p-4 font-mono" dir="ltr">{std.phone}</td>
                       <td className="p-4">
                         <div className="font-semibold text-slate-800 dark:text-slate-200">{std.parentName}</div>
-                        <div className="text-[11px] text-slate-500 font-mono" dir="ltr">{std.parentPhone}</div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono" dir="ltr">{std.parentPhone}</div>
                       </td>
                       <td className="p-4 font-semibold text-brand-800 dark:text-cyan-300">
                         {grp ? grp.name : 'غير محدد'}
@@ -219,6 +219,73 @@ export default function StudentsDirectoryPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Mobile Student Cards View (Shown only on phones) */}
+      <div className="md:hidden space-y-3">
+        {filteredStudents.length === 0 ? (
+          <div className="p-8 text-center text-slate-400 liquid-glass rounded-2xl">لا يوجد طلاب مطابقين للبحث</div>
+        ) : (
+          filteredStudents.map((std) => {
+            const grp = data.groups.find((g) => g.id === std.groupId);
+            return (
+              <div
+                key={std.id}
+                className="p-4 rounded-2xl liquid-glass space-y-2.5 shadow-xs"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-xl bg-brand-50 dark:bg-brand-950 text-brand-600 dark:text-cyan-400 font-mono font-black text-xs flex items-center justify-center">
+                      #{std.code}
+                    </span>
+                    <div>
+                      <h4 className="font-bold text-slate-900 dark:text-white text-xs">{std.name}</h4>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">{grp ? grp.name : '—'}</p>
+                    </div>
+                  </div>
+
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      std.status === 'ACTIVE'
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                        : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                    }`}
+                  >
+                    {std.status === 'ACTIVE' ? 'معتمد' : 'معلق'}
+                  </span>
+                </div>
+
+                <div className="text-[11px] text-slate-600 dark:text-slate-400 space-y-0.5 border-t border-slate-100 dark:border-slate-800 pt-2">
+                  <div className="flex justify-between">
+                    <span>هاتف الطالب:</span>
+                    <span className="font-mono text-slate-900 dark:text-white" dir="ltr">{std.phone}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>ولي الأمر ({std.parentName}):</span>
+                    <span className="font-mono text-slate-900 dark:text-white" dir="ltr">{std.parentPhone}</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    onClick={() => setEditingStudent(std)}
+                    className="px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold flex items-center gap-1"
+                  >
+                    <Edit3 className="w-3 h-3" />
+                    تعديل
+                  </button>
+                  <button
+                    onClick={() => handleDelete(std.id, std.name)}
+                    className="px-3 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    حذف
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
 
       {/* Add Student Modal */}
