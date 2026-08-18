@@ -76,6 +76,7 @@ export function generateStudentAbsenceWhatsAppUrl(params: {
   studentPhone: string;
   studentName: string;
   groupName: string;
+  sessionDate?: string;
 }): string {
   const message = `أهلاً يا ${params.studentName}،\n` +
     `لاحظنا غيابك اليوم عن حصة العلوم المتكاملة (${params.groupName}).\n` +

@@ -18,6 +18,8 @@ import {
   Check,
   X,
   Trash2,
+  Download,
+  Printer,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -58,64 +60,73 @@ export default function ExamsDashboardPage() {
     data.examResults
       .filter((r) => r.examId === selectedExamId)
       .forEach((r) => {
-        initialScores[r.studentId] = { score: r.score, feedback: r.feedback || '' };
+        initialScores[r.studentId] = {
+          score: r.score,
+          feedback: r.feedback || '',
+        };
       });
     setScoresState(initialScores);
   }, [data, selectedExamId]);
 
   if (!data) return null;
 
-  const activeStudents = data.students.filter((s) => s.status === 'ACTIVE');
   const selectedExam = data.exams.find((e) => e.id === selectedExamId);
+  const activeStudents = data.students.filter((s) => s.status === 'ACTIVE');
 
   const handleScoreChange = (studentId: string, val: string) => {
-    const num = Math.min(Math.max(0, parseFloat(val) || 0), selectedExam?.totalScore || 100);
+    const num = Number(val);
     setScoresState((prev) => ({
       ...prev,
-      [studentId]: { ...(prev[studentId] || { feedback: '' }), score: num },
+      [studentId]: {
+        score: isNaN(num) ? 0 : num,
+        feedback: prev[studentId]?.feedback || '',
+      },
     }));
   };
 
-  const handleFeedbackChange = (studentId: string, feedback: string) => {
+  const handleFeedbackChange = (studentId: string, val: string) => {
     setScoresState((prev) => ({
       ...prev,
-      [studentId]: { ...(prev[studentId] || { score: 0 }), feedback },
+      [studentId]: {
+        score: prev[studentId]?.score || 0,
+        feedback: val,
+      },
     }));
   };
 
   const handleSaveGrade = (studentId: string) => {
-    if (!selectedExam) return;
-    const existingResult = data.examResults.find(
-      (r) => r.examId === selectedExamId && r.studentId === studentId
-    );
-    const scoreToSave = scoresState[studentId]?.score ?? existingResult?.score ?? 0;
-    const feedbackToSave = scoresState[studentId]?.feedback ?? existingResult?.feedback ?? '';
+    if (!selectedExamId) return;
+    const item = scoresState[studentId];
+    const scoreVal = item ? item.score : 0;
+    const feedbackVal = item ? item.feedback : '';
 
-    db.setExamGrade(selectedExam.id, studentId, scoreToSave, feedbackToSave);
+    db.setExamGrade(selectedExamId, studentId, scoreVal, feedbackVal);
+
     sound.playSuccessChime();
-
     setSavedSuccessId(studentId);
-    setTimeout(() => setSavedSuccessId(null), 2500);
+    setTimeout(() => {
+      setSavedSuccessId(null);
+    }, 2000);
     loadData();
   };
 
   const handleSaveAllGrades = () => {
-    if (!selectedExam) return;
+    if (!selectedExamId) return;
     activeStudents.forEach((std) => {
-      const existingResult = data.examResults.find(
-        (r) => r.examId === selectedExamId && r.studentId === std.id
-      );
-      const scoreToSave = scoresState[std.id]?.score ?? existingResult?.score ?? 0;
-      const feedbackToSave = scoresState[std.id]?.feedback ?? existingResult?.feedback ?? '';
-      db.setExamGrade(selectedExam.id, std.id, scoreToSave, feedbackToSave);
+      const item = scoresState[std.id];
+      const scoreVal = item ? item.score : 0;
+      const feedbackVal = item ? item.feedback : '';
+
+      db.setExamGrade(selectedExamId, std.id, scoreVal, feedbackVal);
     });
 
     sound.playSuccessChime();
-    setSaveAllSuccess(true);
     try {
-      confetti({ particleCount: 40, spread: 60 });
+      confetti({ particleCount: 50, spread: 60 });
     } catch {}
-    setTimeout(() => setSaveAllSuccess(false), 3500);
+
+    setSaveAllSuccess(true);
+    setTimeout(() => setSaveAllSuccess(false), 3000);
     loadData();
   };
 
@@ -169,10 +180,40 @@ export default function ExamsDashboardPage() {
     window.open(url, '_blank');
   };
 
+  // Export Exam Grades to CSV
+  const handleExportCSV = () => {
+    if (!selectedExam) return;
+
+    let csvContent = '\uFEFF'; // Arabic UTF-8 BOM
+    csvContent += 'كود الطالب,اسم الطالب,المجموعة,الدرجة,الدرجة النهائية,الملاحظة,هاتف ولي الأمر\n';
+
+    activeStudents.forEach((std) => {
+      const grp = data.groups.find((g) => g.id === std.groupId);
+      const res = data.examResults.find((r) => r.examId === selectedExamId && r.studentId === std.id);
+      const score = scoresState[std.id]?.score ?? res?.score ?? 0;
+      const feedback = scoresState[std.id]?.feedback ?? res?.feedback ?? '';
+
+      csvContent += `"${std.code}","${std.name}","${grp?.name || '—'}","${score}","${selectedExam.totalScore}","${feedback}","${std.parentPhone}"\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `كشف_درجات_${selectedExam.title.replace(/\s+/g, '_')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
     <div className="space-y-6 py-2">
       {/* Header */}
-      <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 no-print">
         <div>
           <h1 className="text-lg sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
             <Award className="w-6 h-6 text-brand-600 dark:text-cyan-400" />
@@ -184,12 +225,32 @@ export default function ExamsDashboardPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {/* Export CSV */}
+          <button
+            onClick={handleExportCSV}
+            className="px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+            title="تصدير النتائج Excel"
+          >
+            <Download className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+            <span className="hidden sm:inline">تصدير Excel</span>
+          </button>
+
+          {/* Print */}
+          <button
+            onClick={handlePrint}
+            className="px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+            title="طباعة كشف الدرجات"
+          >
+            <Printer className="w-4 h-4" />
+            <span className="hidden sm:inline">طباعة</span>
+          </button>
+
           <button
             onClick={handleSaveAllGrades}
             className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs shadow-md transition flex items-center justify-center gap-1.5"
           >
             <Save className="w-4 h-4" />
-            {saveAllSuccess ? 'تم حفظ جميع الدرجات بنجاح! ✅' : 'حفظ كل الدرجات 💾'}
+            {saveAllSuccess ? 'تم حفظ الكل! ✅' : 'حفظ كل الدرجات 💾'}
           </button>
 
           <button
@@ -197,13 +258,13 @@ export default function ExamsDashboardPage() {
             className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 active:scale-95 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5"
           >
             <Plus className="w-4 h-4" />
-            إضافة امتحان جديد ➕
+            إضافة امتحان ➕
           </button>
         </div>
       </div>
 
       {/* Exam Selector Strip */}
-      <div className="liquid-glass rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <div className="liquid-glass rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 no-print">
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <label className="text-xs font-bold text-slate-600 dark:text-slate-300 whitespace-nowrap">اختر الامتحان:</label>
           <select
@@ -228,7 +289,7 @@ export default function ExamsDashboardPage() {
 
       {/* Responsive Cards for Mobile / Table for Desktop */}
       <div className="liquid-glass rounded-3xl p-4 sm:p-6 shadow-sm space-y-4">
-        {/* Desktop Table View (Hidden on mobile) */}
+        {/* Desktop Table View */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-right text-xs">
             <thead className="bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-bold">
@@ -298,37 +359,39 @@ export default function ExamsDashboardPage() {
                         }`}
                       >
                         {isSaved ? <Check className="w-3.5 h-3.5" /> : null}
-                        <span>{isSaved ? 'تم الحفظ' : 'حفظ'}</span>
+                        <span>{isSaved ? 'تم ✔️' : 'حفظ'}</span>
                       </button>
                     </td>
 
-                    {/* Direct WhatsApp Buttons */}
-                    <td className="p-3.5 text-center space-x-1.5 space-x-reverse">
-                      <button
-                        onClick={() => handleOpenParentWhatsApp(std, currentScore, existingResult?.id)}
-                        className={`px-2.5 py-1.5 rounded-xl font-bold text-[11px] transition inline-flex items-center gap-1 shadow-xs ${
-                          parentSent
-                            ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
-                            : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                        }`}
-                        title="إرسال واتساب لولي الأمر"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5" />
-                        <span>{parentSent ? 'تم الإرسال ✔️' : 'ولي الأمر'}</span>
-                      </button>
+                    {/* WhatsApp Actions */}
+                    <td className="p-3.5 text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={() => handleOpenParentWhatsApp(std, currentScore, existingResult?.id)}
+                          className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition flex items-center gap-1 ${
+                            parentSent
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                              : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                          }`}
+                          title={`إرسال لولي الأمر (${std.parentPhone})`}
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          <span>{parentSent ? 'أُرسل للولي ✔️' : 'واتساب الولي'}</span>
+                        </button>
 
-                      <button
-                        onClick={() => handleOpenStudentWhatsApp(std, currentScore, existingResult?.id)}
-                        className={`px-2 py-1.5 rounded-xl font-bold text-[11px] transition inline-flex items-center gap-1 ${
-                          studentSent
-                            ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
-                            : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200'
-                        }`}
-                        title="إرسال واتساب للطالب"
-                      >
-                        <Phone className="w-3.5 h-3.5" />
-                        <span>طالب</span>
-                      </button>
+                        <button
+                          onClick={() => handleOpenStudentWhatsApp(std, currentScore, existingResult?.id)}
+                          className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition flex items-center gap-1 ${
+                            studentSent
+                              ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300'
+                              : 'bg-cyan-600 hover:bg-cyan-700 text-white'
+                          }`}
+                          title={`إرسال للطالب (${std.phone})`}
+                        >
+                          <Phone className="w-3.5 h-3.5" />
+                          <span>{studentSent ? 'أُرسل للطالب ✔️' : 'واتساب الطالب'}</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -337,7 +400,7 @@ export default function ExamsDashboardPage() {
           </table>
         </div>
 
-        {/* Mobile Touch Cards View (Shown only on phones) */}
+        {/* Mobile Touch Cards View */}
         <div className="md:hidden space-y-3">
           {activeStudents.map((std) => {
             const grp = data.groups.find((g) => g.id === std.groupId);
@@ -354,68 +417,85 @@ export default function ExamsDashboardPage() {
             return (
               <div
                 key={std.id}
-                className="p-4 rounded-2xl bg-white/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 space-y-3 shadow-xs"
+                className="p-4 rounded-2xl bg-white/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 space-y-3 shadow-2xs"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="w-8 h-8 rounded-xl bg-brand-50 dark:bg-brand-950 text-brand-600 dark:text-cyan-400 font-mono font-black text-xs flex items-center justify-center">
+                    <span className="font-mono font-black text-xs bg-brand-50 dark:bg-brand-950/80 text-brand-700 dark:text-cyan-400 px-2 py-0.5 rounded-md">
                       #{std.code}
                     </span>
-                    <div>
-                      <h4 className="font-bold text-slate-900 dark:text-white text-xs">{std.name}</h4>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400">{grp ? grp.name : '—'}</p>
-                    </div>
+                    <h3 className="font-black text-slate-900 dark:text-white text-sm">{std.name}</h3>
                   </div>
+                  <span className="text-[10px] text-slate-400">{grp?.name || '—'}</span>
+                </div>
 
-                  <div className="flex items-center gap-1">
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block">
+                      الدرجة من ({selectedExam?.totalScore}):
+                    </label>
                     <input
                       type="number"
                       min={0}
                       max={selectedExam?.totalScore || 100}
                       value={currentScore}
                       onChange={(e) => handleScoreChange(std.id, e.target.value)}
-                      className="w-14 px-2 py-1 text-center font-black text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                      className="w-full px-3 py-2 text-center font-black text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:border-brand-500 focus:outline-none"
                     />
-                    <span className="text-slate-400 text-xs font-bold">/ {selectedExam?.totalScore}</span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block">
+                      حفظ الدرجة:
+                    </label>
+                    <button
+                      onClick={() => handleSaveGrade(std.id)}
+                      className={`w-full py-2 rounded-xl font-bold text-xs shadow-xs transition active:scale-95 flex items-center justify-center gap-1 ${
+                        isSaved
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-brand-600 hover:bg-brand-700 text-white'
+                      }`}
+                    >
+                      {isSaved ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+                      <span>{isSaved ? 'تم الحفظ ✔️' : 'حفظ الدرجة'}</span>
+                    </button>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="space-y-1">
                   <input
                     type="text"
-                    placeholder="ملاحظة المس..."
+                    placeholder="ملاحظة تشجيعية للطالب..."
                     value={currentFeedback}
                     onChange={(e) => handleFeedbackChange(std.id, e.target.value)}
-                    className="flex-1 px-3 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:border-brand-500 focus:outline-none"
                   />
-                  <button
-                    onClick={() => handleSaveGrade(std.id)}
-                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition shrink-0 ${
-                      isSaved ? 'bg-emerald-600 text-white' : 'bg-brand-600 text-white'
-                    }`}
-                  >
-                    {isSaved ? 'تم ✓' : 'حفظ'}
-                  </button>
                 </div>
 
-                <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-700/60">
-                  <span className="text-[10px] text-slate-400">إرسال واتساب:</span>
-                  <div className="flex gap-1.5">
-                    <button
-                      onClick={() => handleOpenParentWhatsApp(std, currentScore, existingResult?.id)}
-                      className="px-2.5 py-1 rounded-xl bg-emerald-600 text-white text-[11px] font-bold flex items-center gap-1"
-                    >
-                      <MessageSquare className="w-3 h-3" />
-                      ولي الأمر
-                    </button>
-                    <button
-                      onClick={() => handleOpenStudentWhatsApp(std, currentScore, existingResult?.id)}
-                      className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold flex items-center gap-1"
-                    >
-                      <Phone className="w-3 h-3" />
-                      طالب
-                    </button>
-                  </div>
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-slate-700/60">
+                  <button
+                    onClick={() => handleOpenParentWhatsApp(std, currentScore, existingResult?.id)}
+                    className={`py-2 px-2 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1 ${
+                      parentSent
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                        : 'bg-emerald-600 text-white'
+                    }`}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>{parentSent ? 'أُرسل للولي ✔️' : 'واتساب الولي'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleOpenStudentWhatsApp(std, currentScore, existingResult?.id)}
+                    className={`py-2 px-2 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1 ${
+                      studentSent
+                        ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300'
+                        : 'bg-cyan-600 text-white'
+                    }`}
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                    <span>{studentSent ? 'أُرسل للطالب ✔️' : 'واتساب الطالب'}</span>
+                  </button>
                 </div>
               </div>
             );
@@ -423,65 +503,70 @@ export default function ExamsDashboardPage() {
         </div>
       </div>
 
-      {/* Add Exam Modal */}
+      {/* Add New Exam Modal */}
       {isAddExamOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">إضافة امتحان ورقي جديد</h2>
-              <button onClick={() => setIsAddExamOpen(false)} className="text-slate-400 hover:text-slate-600">
+          <div className="w-full max-w-md liquid-glass rounded-3xl p-6 sm:p-7 space-y-4 shadow-2xl animate-ios-spring">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <h3 className="font-black text-slate-900 dark:text-white text-base">إضافة امتحان جديد</h3>
+              <button
+                onClick={() => setIsAddExamOpen(false)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateExam} className="space-y-3 text-xs">
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">عنوان الامتحان</label>
+            <form onSubmit={handleCreateExam} className="space-y-4 text-xs">
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-700 dark:text-slate-300">عنوان الامتحان *</label>
                 <input
                   type="text"
-                  placeholder="مثال: اختبار الباب الأول - الكيمياء ومركز العلوم"
+                  placeholder="مثال: امتحان شهر نوفمبر - الباب الثاني"
                   value={newExamTitle}
                   onChange={(e) => setNewExamTitle(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500 font-bold"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
                   required
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">الدرجة النهائية</label>
-                <input
-                  type="number"
-                  min={5}
-                  max={100}
-                  value={newExamScore}
-                  onChange={(e) => setNewExamScore(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500 font-bold"
-                  required
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-700 dark:text-slate-300">الدرجة النهائية *</label>
+                  <input
+                    type="number"
+                    min={5}
+                    max={100}
+                    value={newExamScore}
+                    onChange={(e) => setNewExamScore(Number(e.target.value))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-700 dark:text-slate-300">تاريخ الامتحان *</label>
+                  <input
+                    type="date"
+                    value={newExamDate}
+                    onChange={(e) => setNewExamDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                    required
+                  />
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">تاريخ الامتحان</label>
-                <input
-                  type="date"
-                  value={newExamDate}
-                  onChange={(e) => setNewExamDate(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
-                  required
-                />
-              </div>
-
-              <div className="flex items-center gap-2 pt-3">
+              <div className="pt-3 flex gap-2">
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold transition"
+                  className="flex-1 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-black shadow-md transition active:scale-95"
                 >
-                  إنشاء الامتحان 🚀
+                  إنشاء الامتحان والبدء بالرصد 🚀
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsAddExamOpen(false)}
-                  className="py-2.5 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold transition"
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-200 transition"
                 >
                   إلغاء
                 </button>
