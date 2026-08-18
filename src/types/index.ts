@@ -59,6 +59,7 @@ export interface Exam {
   id: string;
   title: string; // e.g. "اختبار الباب الأول - العلوم المتكاملة"
   totalScore: number; // e.g. 20
+  maxScore: number;
   date: string;
   academicYear: AcademicYear;
   groupId?: string; // Optional: specific to a group or all

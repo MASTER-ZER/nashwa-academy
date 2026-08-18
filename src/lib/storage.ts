@@ -1,31 +1,56 @@
 import { Student, Group, Session, AttendanceRecord, Subscription, Exam, ExamResult, SystemData, SystemSettings } from '@/types';
 import { supabase, isSupabaseConfigured } from './supabase';
 
-const STORAGE_KEY = 'nashwa_academy_db_v3';
+const STORAGE_KEY = 'nashwa_academy_db_v4';
+
+// Helper to get current Arabic academic month dynamically
+export function getCurrentMonthLabel(): string {
+  const arabicMonths = [
+    'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+    'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
+  ];
+  const now = new Date();
+  const monthName = arabicMonths[now.getMonth()];
+  const year = now.getFullYear();
+  return `${monthName} ${year}`;
+}
+
+export function getAcademicMonthsList(): string[] {
+  return [
+    'أكتوبر 2026',
+    'نوفمبر 2026',
+    'ديسمبر 2026',
+    'يناير 2027',
+    'فبراير 2027',
+    'مارس 2027',
+    'أبريل 2027',
+    'مايو 2027',
+  ];
+}
 
 // Default initial seed data
 const INITIAL_GROUPS: Group[] = [
   {
     id: 'grp-1',
-    name: 'مجموعة (1) - الأحد والثلاثاء | 1:00 ظهرًا',
-    time: '01:00 PM',
-    days: ['الأحد', 'الثلاثاء'],
+    name: 'مجموعة (1) - السبت والثلاثاء | 4:00 مساءً',
+    time: '4:00 مساءً',
+    days: ['السبت', 'الثلاثاء'],
     academicYear: 'FIRST_SEC',
     maxStudents: 35,
   },
   {
     id: 'grp-2',
-    name: 'مجموعة (2) - الأحد والثلاثاء | 3:00 عصرًا',
-    time: '03:00 PM',
-    days: ['الأحد', 'الثلاثاء'],
+    name: 'مجموعة (2) - الأحد والأربعاء | 5:00 مساءً',
+    time: '5:00 مساءً',
+    days: ['الأحد', 'الأربعاء'],
     academicYear: 'FIRST_SEC',
     maxStudents: 35,
   },
   {
     id: 'grp-3',
-    name: 'مجموعة (3) - السبت والأربعاء | 2:00 ظهرًا',
-    time: '02:00 PM',
-    days: ['السبت', 'الأربعاء'],
+    name: 'مجموعة (3) - الإثنين والخميس | 3:00 مساءً',
+    time: '3:00 مساءً',
+    days: ['الإثنين', 'الخميس'],
     academicYear: 'FIRST_SEC',
     maxStudents: 35,
   },
@@ -38,109 +63,99 @@ const INITIAL_STUDENTS: Student[] = [
     name: 'إياد محمد نجاح',
     phone: '01012345678',
     parentName: 'محمد نجاح',
-    parentPhone: '01198765432',
+    parentPhone: '01187654321',
     address: 'شارع الجمهورية - المنصورة',
     academicYear: 'FIRST_SEC',
     groupId: 'grp-1',
     status: 'ACTIVE',
-    registeredAt: '2026-08-10T10:00:00Z',
+    registeredAt: '2026-10-01T10:00:00Z',
+    notes: 'طالب ممتاز ومتفوق',
   },
   {
     id: 'std-102',
     code: '102',
-    name: 'أحمد محمود عبد الفتاح',
-    phone: '01223344556',
-    parentName: 'محمود عبد الفتاح',
-    parentPhone: '01099887766',
+    name: 'أحمد محمود السعيد',
+    phone: '01098765432',
+    parentName: 'محمود السعيد',
+    parentPhone: '01234567890',
     address: 'شارع البحر - طلخا',
     academicYear: 'FIRST_SEC',
     groupId: 'grp-1',
     status: 'ACTIVE',
-    registeredAt: '2026-08-11T12:00:00Z',
+    registeredAt: '2026-10-02T11:00:00Z',
   },
   {
     id: 'std-103',
     code: '103',
-    name: 'سارة طارق إبراهيم',
-    phone: '01555443322',
-    parentName: 'طارق إبراهيم',
-    parentPhone: '01233445566',
-    address: 'شارع الجيش - المنصورة',
+    name: 'سارة إبراهيم الشناوي',
+    phone: '01511223344',
+    parentName: 'إبراهيم الشناوي',
+    parentPhone: '01599887766',
+    address: 'شارع المشاية - المنصورة',
     academicYear: 'FIRST_SEC',
     groupId: 'grp-2',
     status: 'ACTIVE',
-    registeredAt: '2026-08-12T14:00:00Z',
-  },
-  {
-    id: 'std-104',
-    code: '104',
-    name: 'عمر خالد الدسوقي',
-    phone: '01066778899',
-    parentName: 'خالد الدسوقي',
-    parentPhone: '01122334455',
-    address: 'سندوب - المنصورة',
-    academicYear: 'FIRST_SEC',
-    groupId: 'grp-1',
-    status: 'PENDING',
-    registeredAt: '2026-08-17T09:30:00Z',
+    registeredAt: '2026-10-03T12:00:00Z',
   },
 ];
 
 const INITIAL_SUBSCRIPTIONS: Subscription[] = [
   {
-    id: 'sub-101-oct',
+    id: 'sub-1',
     studentId: 'std-101',
-    month: 'أكتوبر 2026',
+    month: getCurrentMonthLabel(),
     amount: 250,
     isPaid: true,
-    paidAt: '2026-10-01T15:30:00Z',
+    paidAt: '2026-10-01T10:00:00Z',
     receivedBy: 'مس نشوى',
   },
   {
-    id: 'sub-102-oct',
+    id: 'sub-2',
     studentId: 'std-102',
-    month: 'أكتوبر 2026',
+    month: getCurrentMonthLabel(),
     amount: 250,
     isPaid: false,
   },
   {
-    id: 'sub-103-oct',
+    id: 'sub-3',
     studentId: 'std-103',
-    month: 'أكتوبر 2026',
+    month: getCurrentMonthLabel(),
     amount: 250,
     isPaid: true,
-    paidAt: '2026-10-02T16:00:00Z',
-    receivedBy: 'السكرتير',
+    paidAt: '2026-10-03T12:00:00Z',
+    receivedBy: 'مس نشوى',
   },
 ];
 
 const INITIAL_EXAMS: Exam[] = [
   {
     id: 'ex-1',
-    title: 'اختبار الباب الأول: الكيمياء ومركز العلوم',
-    totalScore: 20,
+    title: 'اختبار الباب الأول - مقدمة في العلوم المتكاملة',
     date: '2026-10-15',
+    totalScore: 20,
+    maxScore: 20,
     academicYear: 'FIRST_SEC',
+    groupId: 'grp-1',
   },
 ];
 
-const INITIAL_EXAM_RESULTS: ExamResult[] = [
+const INITIAL_RESULTS: ExamResult[] = [
   {
     id: 'res-1',
     examId: 'ex-1',
     studentId: 'std-101',
-    score: 19,
-    feedback: 'ممتاز جداً وإجابات نموذجية 🌟',
-    parentNotified: false,
-    studentNotified: false,
+    score: 20,
+    feedback: 'ممتاز! الدرجة النهائية مع مرتبة الشرف 🌟',
+    parentNotified: true,
+    studentNotified: true,
     gradedAt: '2026-10-16T10:00:00Z',
   },
   {
     id: 'res-2',
     examId: 'ex-1',
     studentId: 'std-102',
-    score: 14,
-    feedback: 'جيد، برجاء مراجعة مسائل التحويلات',
+    score: 17,
+    feedback: 'جيد جداً، برجاء مراجعة مسائل السرعة والتحويلات',
     parentNotified: false,
     studentNotified: false,
     gradedAt: '2026-10-16T10:05:00Z',
@@ -182,11 +197,11 @@ function dbToStudent(row: any): Student {
     code: row.code,
     name: row.name,
     phone: row.phone,
-    parentName: row.parent_name || '',
-    parentPhone: row.parent_phone || '',
+    parentName: row.parent_name,
+    parentPhone: row.parent_phone,
     address: row.address || '',
     academicYear: row.academic_year || 'FIRST_SEC',
-    groupId: row.group_id || 'grp-1',
+    groupId: row.group_id || '',
     status: row.status || 'PENDING',
     registeredAt: row.registered_at || new Date().toISOString(),
   };
@@ -245,12 +260,13 @@ function dbToSubscription(row: any): Subscription {
 class StorageService {
   private listeners: Set<() => void> = new Set();
   private isSupabaseSyncing: boolean = false;
+  private realtimeChannel: any = null;
 
   constructor() {
     if (typeof window !== 'undefined') {
+      this.initRealtimeChannel();
       this.syncFromSupabase();
-      
-      // Auto sync when window gains focus
+
       window.addEventListener('focus', () => {
         this.syncFromSupabase();
       });
@@ -259,6 +275,20 @@ class StorageService {
 
   private isClient(): boolean {
     return typeof window !== 'undefined';
+  }
+
+  private initRealtimeChannel() {
+    if (!supabase || this.realtimeChannel) return;
+    try {
+      this.realtimeChannel = supabase.channel('kiosk_live_sync_v4', {
+        config: { broadcast: { ack: true } },
+      });
+      this.realtimeChannel.subscribe((status: string) => {
+        console.log('📡 Realtime Kiosk Status:', status);
+      });
+    } catch (err) {
+      console.warn('Realtime init warning:', err);
+    }
   }
 
   // Sync latest cloud data from Supabase
@@ -309,15 +339,21 @@ class StorageService {
               time: s.time,
             }))
           : localData.sessions,
-        attendance: attendanceData ? attendanceData.map(dbToAttendance) : localData.attendance,
-        subscriptions: subscriptionsData ? subscriptionsData.map(dbToSubscription) : localData.subscriptions,
+        attendance: attendanceData && attendanceData.length > 0
+          ? attendanceData.map(dbToAttendance)
+          : localData.attendance,
+        subscriptions: subscriptionsData && subscriptionsData.length > 0
+          ? subscriptionsData.map(dbToSubscription)
+          : localData.subscriptions,
         exams: examsData && examsData.length > 0
           ? examsData.map((e: any) => ({
               id: e.id,
               title: e.title,
-              totalScore: Number(e.total_score),
               date: e.date,
+              totalScore: Number(e.total_score || e.max_score || 20),
+              maxScore: Number(e.max_score || e.total_score || 20),
               academicYear: e.academic_year,
+              groupId: e.group_id,
             }))
           : localData.exams,
         examResults: resultsData && resultsData.length > 0
@@ -326,17 +362,20 @@ class StorageService {
               examId: r.exam_id,
               studentId: r.student_id,
               score: Number(r.score),
-              feedback: r.feedback,
+              feedback: r.feedback || '',
               parentNotified: Boolean(r.parent_notified),
               studentNotified: Boolean(r.student_notified),
               gradedAt: r.graded_at,
             }))
           : localData.examResults,
+        settings: localData.settings || DEFAULT_SETTINGS,
+        lastBackupDate: localData.lastBackupDate,
       };
 
       this.saveData(merged, false);
-    } catch (e) {
-      console.warn('Supabase sync warning:', e);
+      this.notifyListeners();
+    } catch (err) {
+      console.warn('Supabase sync warning:', err);
     } finally {
       this.isSupabaseSyncing = false;
     }
@@ -351,158 +390,135 @@ class StorageService {
         attendance: [],
         subscriptions: INITIAL_SUBSCRIPTIONS,
         exams: INITIAL_EXAMS,
-        examResults: INITIAL_EXAM_RESULTS,
+        examResults: INITIAL_RESULTS,
+        settings: DEFAULT_SETTINGS,
       };
     }
 
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      try {
-        return JSON.parse(raw);
-      } catch (e) {
-        console.error('Error parsing stored data', e);
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (!stored) {
+        const initialData: SystemData = {
+          groups: INITIAL_GROUPS,
+          students: INITIAL_STUDENTS,
+          sessions: [],
+          attendance: [],
+          subscriptions: INITIAL_SUBSCRIPTIONS,
+          exams: INITIAL_EXAMS,
+          examResults: INITIAL_RESULTS,
+          settings: DEFAULT_SETTINGS,
+        };
+        this.saveData(initialData, false);
+        return initialData;
       }
+      const parsed: SystemData = JSON.parse(stored);
+      if (!parsed.settings) parsed.settings = DEFAULT_SETTINGS;
+      return parsed;
+    } catch (e) {
+      console.error('Failed to parse local storage data, resetting...', e);
+      return {
+        groups: INITIAL_GROUPS,
+        students: INITIAL_STUDENTS,
+        sessions: [],
+        attendance: [],
+        subscriptions: INITIAL_SUBSCRIPTIONS,
+        exams: INITIAL_EXAMS,
+        examResults: INITIAL_RESULTS,
+        settings: DEFAULT_SETTINGS,
+      };
     }
-
-    const initial: SystemData = {
-      groups: INITIAL_GROUPS,
-      students: INITIAL_STUDENTS,
-      sessions: [
-        {
-          id: 'sess-today',
-          groupId: 'grp-1',
-          title: 'حصة مراجعة الباب الأول',
-          date: new Date().toISOString().split('T')[0],
-          time: '01:00 PM',
-        }
-      ],
-      attendance: [],
-      subscriptions: INITIAL_SUBSCRIPTIONS,
-      exams: INITIAL_EXAMS,
-      examResults: INITIAL_EXAM_RESULTS,
-    };
-
-    this.saveData(initial, false);
-    return initial;
   }
 
-  public saveData(data: SystemData, syncToCloud: boolean = true) {
-    if (this.isClient()) {
+  public saveData(data: SystemData, syncCloud = true): void {
+    if (!this.isClient()) return;
+    try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
       this.notifyListeners();
+    } catch (e) {
+      console.error('Failed to save to localStorage', e);
     }
   }
 
-  public subscribe(listener: () => void) {
+  public subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
     };
   }
 
-  private notifyListeners() {
-    this.listeners.forEach((l) => l());
+  private notifyListeners(): void {
+    this.listeners.forEach((listener) => {
+      try {
+        listener();
+      } catch (e) {
+        console.error('Error in storage listener', e);
+      }
+    });
   }
 
-  // --- Student Methods ---
-  public registerStudent(student: Omit<Student, 'id' | 'code' | 'status' | 'registeredAt'>): Student {
-    const data = this.getData();
-    const existingCodes = data.students.map((s) => parseInt(s.code, 10)).filter((n) => !isNaN(n));
-    const nextCodeNum = existingCodes.length > 0 ? Math.max(...existingCodes) + 1 : 101;
-    const newStudent: Student = {
-      ...student,
-      id: `std-${Date.now()}`,
-      code: String(nextCodeNum),
-      status: 'PENDING',
-      registeredAt: new Date().toISOString(),
-    };
-
-    data.students.push(newStudent);
-    this.saveData(data);
-
-    // Save to Supabase Cloud immediately
+  // --- Real-time Kiosk Multi-Device Sync ---
+  public broadcastKioskEvent(event: {
+    type: 'SCAN_RESULT' | 'ATTENDANCE_UPDATE' | 'PAYMENT_COLLECTED';
+    payload: any;
+  }) {
     if (supabase) {
-      supabase.from('students').insert(studentToDb(newStudent)).then(({ error }) => {
-        if (error) console.error('Supabase registerStudent error:', error);
-      });
-    }
-
-    return newStudent;
-  }
-
-  public approveStudent(studentId: string, customGroupId?: string): Student | null {
-    const data = this.getData();
-    const student = data.students.find((s) => s.id === studentId);
-    if (!student) return null;
-
-    student.status = 'ACTIVE';
-    if (customGroupId) student.groupId = customGroupId;
-
-    const currentMonth = 'أكتوبر 2026';
-    let sub = data.subscriptions.find((s) => s.studentId === student.id && s.month === currentMonth);
-    if (!sub) {
-      sub = {
-        id: `sub-${student.id}-${Date.now()}`,
-        studentId: student.id,
-        month: currentMonth,
-        amount: 250,
-        isPaid: false,
-      };
-      data.subscriptions.push(sub);
-    }
-
-    this.saveData(data);
-
-    // Push update to Supabase Cloud immediately
-    if (supabase) {
-      supabase.from('students').update({
-        status: 'ACTIVE',
-        group_id: student.groupId,
-        approved_at: new Date().toISOString(),
-      }).eq('id', student.id).then(({ error }) => {
-        if (error) console.error('Supabase approveStudent error:', error);
-      });
-
-      if (sub) {
-        supabase.from('subscriptions').upsert(subscriptionToDb(sub), { onConflict: 'id' }).then(({ error }) => {
-          if (error) console.error('Supabase sub upsert error:', error);
-        });
+      try {
+        this.initRealtimeChannel();
+        if (this.realtimeChannel) {
+          this.realtimeChannel.send({
+            type: 'broadcast',
+            event: 'kiosk_action',
+            payload: event,
+          });
+        }
+      } catch (err) {
+        console.warn('Supabase broadcast error:', err);
       }
     }
 
-    return student;
-  }
-
-  public rejectStudent(studentId: string) {
-    const data = this.getData();
-    data.students = data.students.filter((s) => s.id !== studentId);
-    this.saveData(data);
-
-    if (supabase) {
-      supabase.from('students').delete().eq('id', studentId).then(({ error }) => {
-        if (error) console.error('Supabase rejectStudent error:', error);
-      });
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        const bc = new BroadcastChannel('nashwa_kiosk_sync_bus_v4');
+        bc.postMessage(event);
+      } catch {}
     }
   }
 
-  public updateStudent(studentId: string, updates: Partial<Student>): Student | null {
-    const data = this.getData();
-    const index = data.students.findIndex((s) => s.id === studentId);
-    if (index === -1) return null;
-
-    data.students[index] = { ...data.students[index], ...updates };
-    this.saveData(data);
+  public subscribeToKioskEvents(callback: (event: { type: string; payload: any }) => void): () => void {
+    let broadcastChannel: BroadcastChannel | null = null;
 
     if (supabase) {
-      supabase.from('students').update(studentToDb(data.students[index])).eq('id', studentId).then(({ error }) => {
-        if (error) console.error('Supabase updateStudent error:', error);
-      });
+      try {
+        this.initRealtimeChannel();
+        if (this.realtimeChannel) {
+          this.realtimeChannel.on('broadcast', { event: 'kiosk_action' }, ({ payload }: any) => {
+            if (payload) callback(payload);
+          });
+        }
+      } catch (err) {
+        console.warn('Supabase subscribe error:', err);
+      }
     }
 
-    return data.students[index];
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        broadcastChannel = new BroadcastChannel('nashwa_kiosk_sync_bus_v4');
+        broadcastChannel.onmessage = (msg) => {
+          if (msg.data) {
+            callback(msg.data);
+          }
+        };
+      } catch {}
+    }
+
+    return () => {
+      if (broadcastChannel) {
+        broadcastChannel.close();
+      }
+    };
   }
 
-  // --- Attendance Scanner & Idempotent Conflict Resolution ---
+  // --- Attendance Scanner Core Logic ---
   public scanAttendance(params: {
     scannedCode: string;
     activeGroupId: string;
@@ -526,7 +542,6 @@ class StorageService {
     );
 
     if (!student) {
-      // Trigger background sync in case student was added from another device
       this.syncFromSupabase();
       return { success: false, type: 'NOT_FOUND' };
     }
@@ -535,7 +550,6 @@ class StorageService {
       return { success: false, type: 'INACTIVE', student };
     }
 
-    // Determine current session
     let sessionId = params.activeSessionId;
     const todayStr = new Date().toISOString().split('T')[0];
     if (!sessionId) {
@@ -553,11 +567,11 @@ class StorageService {
       sessionId = session.id;
     }
 
-    const currentMonth = 'أكتوبر 2026';
+    const currentMonth = getCurrentMonthLabel();
     const sub = data.subscriptions.find((s) => s.studentId === student.id && s.month === currentMonth);
     const isPaid = sub ? sub.isPaid : false;
 
-    // Check if student already attended in this session
+    // Check duplicate
     const existing = data.attendance.find(
       (a) => a.sessionId === sessionId && a.studentId === student.id
     );
@@ -573,7 +587,7 @@ class StorageService {
       };
     }
 
-    // Check if student belongs to a different group and makeup not yet confirmed
+    // Check different group
     const isDifferentGroup = student.groupId !== params.activeGroupId;
     if (isDifferentGroup && !params.allowMakeup) {
       return {
@@ -586,7 +600,7 @@ class StorageService {
       };
     }
 
-    // New attendance record (Attended or Makeup)
+    // Record attendance
     const newRecord: AttendanceRecord = {
       id: `att-${sessionId}-${student.id}-${Date.now()}`,
       sessionId: sessionId,
@@ -601,7 +615,7 @@ class StorageService {
     data.attendance.push(newRecord);
     this.saveData(data);
 
-    // Save to Supabase Cloud: ensure session exists first, then insert attendance
+    // Save to Supabase Cloud
     if (supabase) {
       const client = supabase;
       client.from('sessions').upsert({
@@ -610,11 +624,8 @@ class StorageService {
         title: `حصة ${todayStr}`,
         date: todayStr,
         time: '00:00',
-      }, { onConflict: 'id' }).then(({ error: sessErr }) => {
-        if (sessErr) console.error('Supabase session upsert error:', sessErr);
-        client.from('attendance').insert(attendanceToDb(newRecord)).then(({ error: attErr }) => {
-          if (attErr) console.error('Supabase attendance insert error:', attErr);
-        });
+      }, { onConflict: 'id' }).then(() => {
+        client.from('attendance').insert(attendanceToDb(newRecord)).then(() => {});
       });
     }
 
@@ -628,28 +639,57 @@ class StorageService {
     };
   }
 
-  public clearSessionAttendance(groupId: string): void {
+  // --- Subscriptions ---
+  public toggleSubscription(studentId: string, month = getCurrentMonthLabel(), receivedBy = 'مس نشوى'): Subscription {
     const data = this.getData();
-    const todayStr = new Date().toISOString().split('T')[0];
-    const session = data.sessions.find((s) => s.groupId === groupId && s.date === todayStr);
-    if (session) {
-      data.attendance = data.attendance.filter((a) => a.sessionId !== session.id);
+    let subIndex = data.subscriptions.findIndex(
+      (s) => s.studentId === studentId && s.month === month
+    );
+
+    const price = data.settings?.subscriptionPrice || 250;
+
+    if (subIndex === -1) {
+      const newSub: Subscription = {
+        id: `sub-${studentId}-${Date.now()}`,
+        studentId,
+        month,
+        amount: price,
+        isPaid: true,
+        paidAt: new Date().toISOString(),
+        receivedBy,
+      };
+      data.subscriptions.push(newSub);
+      this.saveData(data);
+
       if (supabase) {
-        supabase.from('attendance').delete().eq('session_id', session.id).then(({ error }) => {
-          if (error) console.error('Supabase delete session attendance error:', error);
-        });
+        supabase.from('subscriptions').insert(subscriptionToDb(newSub)).then(() => {});
       }
-    } else {
-      data.attendance = data.attendance.filter((a) => a.groupId !== groupId);
+      return newSub;
     }
+
+    const current = data.subscriptions[subIndex];
+    const updated: Subscription = {
+      ...current,
+      isPaid: !current.isPaid,
+      paidAt: !current.isPaid ? new Date().toISOString() : undefined,
+      receivedBy: !current.isPaid ? receivedBy : undefined,
+    };
+
+    data.subscriptions[subIndex] = updated;
     this.saveData(data);
+
+    if (supabase) {
+      supabase.from('subscriptions').upsert(subscriptionToDb(updated), { onConflict: 'id' }).then(() => {});
+    }
+
+    return updated;
   }
 
-  // --- Groups Management ---
-  public addGroup(group: Omit<Group, 'id'>): Group {
+  // --- Groups ---
+  public addGroup(groupData: Omit<Group, 'id'>): Group {
     const data = this.getData();
     const newGroup: Group = {
-      ...group,
+      ...groupData,
       id: `grp-${Date.now()}`,
     };
     data.groups.push(newGroup);
@@ -662,94 +702,153 @@ class StorageService {
         time: newGroup.time,
         days: newGroup.days,
         academic_year: newGroup.academicYear,
-        max_students: newGroup.maxStudents || 35,
-      }).then(({ error }) => {
-        if (error) console.error('Supabase addGroup error:', error);
-      });
+        max_students: newGroup.maxStudents,
+      }).then(() => {});
     }
-
     return newGroup;
   }
 
-  public updateGroup(groupId: string, updates: Partial<Group>): Group | null {
+  public updateGroup(id: string, groupData: Partial<Group>): Group | null {
     const data = this.getData();
-    const index = data.groups.findIndex((g) => g.id === groupId);
+    const index = data.groups.findIndex((g) => g.id === id);
     if (index === -1) return null;
 
-    data.groups[index] = { ...data.groups[index], ...updates };
+    data.groups[index] = { ...data.groups[index], ...groupData };
     this.saveData(data);
 
     if (supabase) {
-      const g = data.groups[index];
       supabase.from('groups').update({
-        name: g.name,
-        time: g.time,
-        days: g.days,
-        academic_year: g.academicYear,
-        max_students: g.maxStudents || 35,
-      }).eq('id', groupId).then(({ error }) => {
-        if (error) console.error('Supabase updateGroup error:', error);
-      });
+        name: data.groups[index].name,
+        time: data.groups[index].time,
+        days: data.groups[index].days,
+        academic_year: data.groups[index].academicYear,
+        max_students: data.groups[index].maxStudents,
+      }).eq('id', id).then(() => {});
     }
-
     return data.groups[index];
   }
 
-  public deleteGroup(groupId: string): boolean {
+  public deleteGroup(id: string): boolean {
     const data = this.getData();
-    data.groups = data.groups.filter((g) => g.id !== groupId);
+    data.groups = data.groups.filter((g) => g.id !== id);
     this.saveData(data);
-
     if (supabase) {
-      supabase.from('groups').delete().eq('id', groupId).then(({ error }) => {
-        if (error) console.error('Supabase deleteGroup error:', error);
-      });
+      supabase.from('groups').delete().eq('id', id).then(() => {});
     }
-
     return true;
   }
 
-  // --- Subscriptions ---
-  public toggleSubscription(studentId: string, month: string = 'أكتوبر 2026', receivedBy: string = 'مس نشوى'): boolean {
+  // --- Students ---
+  public registerStudent(studentData: {
+    name: string;
+    phone: string;
+    parentName: string;
+    parentPhone: string;
+    address?: string;
+    groupId: string;
+    academicYear?: any;
+    status?: any;
+    notes?: string;
+  }): Student {
     const data = this.getData();
-    let sub = data.subscriptions.find((s) => s.studentId === studentId && s.month === month);
-    if (!sub) {
-      sub = {
-        id: `sub-${studentId}-${Date.now()}`,
-        studentId,
-        month,
-        amount: 250,
-        isPaid: true,
-        paidAt: new Date().toISOString(),
-        receivedBy,
-      };
-      data.subscriptions.push(sub);
-    } else {
-      sub.isPaid = !sub.isPaid;
-      if (sub.isPaid) {
-        sub.paidAt = new Date().toISOString();
-        sub.receivedBy = receivedBy;
-      } else {
-        sub.paidAt = undefined;
-        sub.receivedBy = undefined;
-      }
-    }
-    this.saveData(data);
+    const codes = data.students.map((s) => parseInt(s.code, 10)).filter((n) => !isNaN(n));
+    const nextCode = codes.length > 0 ? String(Math.max(...codes) + 1) : '101';
 
-    if (supabase && sub) {
-      supabase.from('subscriptions').upsert(subscriptionToDb(sub), { onConflict: 'id' }).then(({ error }) => {
-        if (error) console.error('Supabase sub toggle error:', error);
-      });
-    }
-
-    return sub.isPaid;
+    return this.addStudent({
+      code: nextCode,
+      name: studentData.name,
+      phone: studentData.phone,
+      parentName: studentData.parentName,
+      parentPhone: studentData.parentPhone,
+      address: studentData.address || '',
+      groupId: studentData.groupId,
+      academicYear: studentData.academicYear || 'FIRST_SEC',
+      status: studentData.status || 'ACTIVE',
+      notes: studentData.notes,
+    });
   }
 
-  // --- Exams & Grades ---
-  public addExam(exam: Omit<Exam, 'id'>): Exam {
+  public addStudent(studentData: Omit<Student, 'id' | 'registeredAt'>): Student {
     const data = this.getData();
+    const newStudent: Student = {
+      ...studentData,
+      id: `std-${Date.now()}`,
+      registeredAt: new Date().toISOString(),
+    };
+    data.students.push(newStudent);
+    this.saveData(data);
+
+    if (supabase) {
+      supabase.from('students').insert(studentToDb(newStudent)).then(() => {});
+    }
+    return newStudent;
+  }
+
+  public updateStudent(id: string, studentData: Partial<Student>): Student | null {
+    const data = this.getData();
+    const index = data.students.findIndex((s) => s.id === id);
+    if (index === -1) return null;
+
+    data.students[index] = { ...data.students[index], ...studentData };
+    this.saveData(data);
+
+    if (supabase) {
+      supabase.from('students').update(studentToDb(data.students[index])).eq('id', id).then(() => {});
+    }
+    return data.students[index];
+  }
+
+  public approveStudent(id: string): Student | null {
+    const data = this.getData();
+    const index = data.students.findIndex((s) => s.id === id);
+    if (index === -1) return null;
+
+    data.students[index].status = 'ACTIVE';
+    this.saveData(data);
+
+    if (supabase) {
+      supabase.from('students').update({ status: 'ACTIVE' }).eq('id', id).then(() => {});
+    }
+    return data.students[index];
+  }
+
+  public deleteStudent(id: string): boolean {
+    const data = this.getData();
+    data.students = data.students.filter((s) => s.id !== id);
+    this.saveData(data);
+    if (supabase) {
+      supabase.from('students').delete().eq('id', id).then(() => {});
+    }
+    return true;
+  }
+
+  public rejectStudent(id: string): boolean {
+    return this.deleteStudent(id);
+  }
+
+  public markNotified(resultId: string, type: 'parent' | 'student'): void {
+    const data = this.getData();
+    const index = data.examResults.findIndex((r) => r.id === resultId);
+    if (index === -1) return;
+
+    if (type === 'parent') data.examResults[index].parentNotified = true;
+    if (type === 'student') data.examResults[index].studentNotified = true;
+    this.saveData(data);
+
+    if (supabase) {
+      const updateData = type === 'parent' ? { parent_notified: true } : { student_notified: true };
+      supabase.from('exam_results').update(updateData).eq('id', resultId).then(() => {});
+    }
+  }
+
+  // --- Exams & Results ---
+  public addExam(examData: Omit<Exam, 'id'>): Exam {
+    const data = this.getData();
+    const total = examData.totalScore || examData.maxScore || 20;
     const newExam: Exam = {
-      ...exam,
+      ...examData,
+      totalScore: total,
+      maxScore: total,
       id: `ex-${Date.now()}`,
     };
     data.exams.push(newExam);
@@ -759,83 +858,71 @@ class StorageService {
       supabase.from('exams').insert({
         id: newExam.id,
         title: newExam.title,
-        total_score: newExam.totalScore,
         date: newExam.date,
+        max_score: total,
+        total_score: total,
         academic_year: newExam.academicYear,
-      }).then(({ error }) => {
-        if (error) console.error('Supabase exam insert error:', error);
-      });
+        group_id: newExam.groupId,
+      }).then(() => {});
     }
-
     return newExam;
   }
 
-  public setExamGrade(examId: string, studentId: string, score: number, feedback?: string): ExamResult {
+  public recordExamResult(resultData: Omit<ExamResult, 'id' | 'gradedAt'>): ExamResult {
     const data = this.getData();
-    let result = data.examResults.find((r) => r.examId === examId && r.studentId === studentId);
-    if (result) {
-      result.score = score;
-      if (feedback !== undefined) result.feedback = feedback;
-      result.gradedAt = new Date().toISOString();
-    } else {
-      result = {
-        id: `res-${examId}-${studentId}`,
-        examId,
-        studentId,
-        score,
-        feedback: feedback || '',
-        parentNotified: false,
-        studentNotified: false,
+    const index = data.examResults.findIndex(
+      (r) => r.examId === resultData.examId && r.studentId === resultData.studentId
+    );
+
+    if (index !== -1) {
+      data.examResults[index] = {
+        ...data.examResults[index],
+        ...resultData,
         gradedAt: new Date().toISOString(),
       };
-      data.examResults.push(result);
+      this.saveData(data);
+      if (supabase) {
+        supabase.from('exam_results').upsert({
+          id: data.examResults[index].id,
+          exam_id: resultData.examId,
+          student_id: resultData.studentId,
+          score: resultData.score,
+          feedback: resultData.feedback,
+          parent_notified: resultData.parentNotified,
+          student_notified: resultData.studentNotified,
+          graded_at: data.examResults[index].gradedAt,
+        }, { onConflict: 'exam_id,student_id' }).then(() => {});
+      }
+      return data.examResults[index];
     }
+
+    const newResult: ExamResult = {
+      ...resultData,
+      id: `res-${Date.now()}`,
+      gradedAt: new Date().toISOString(),
+    };
+    data.examResults.push(newResult);
     this.saveData(data);
 
     if (supabase) {
-      supabase.from('exam_results').upsert({
-        id: result.id,
-        exam_id: result.examId,
-        student_id: result.studentId,
-        score: result.score,
-        feedback: result.feedback,
-        parent_notified: result.parentNotified,
-        student_notified: result.studentNotified,
-        graded_at: result.gradedAt,
-      }, { onConflict: 'exam_id,student_id' }).then(({ error }) => {
-        if (error) console.error('Supabase exam result upsert error:', error);
-      });
+      supabase.from('exam_results').insert({
+        id: newResult.id,
+        exam_id: newResult.examId,
+        student_id: newResult.studentId,
+        score: newResult.score,
+        feedback: newResult.feedback,
+        parent_notified: newResult.parentNotified,
+        student_notified: newResult.studentNotified,
+        graded_at: newResult.gradedAt,
+      }).then(() => {});
     }
-
-    return result;
+    return newResult;
   }
 
-  public markNotified(resultId: string, target: 'parent' | 'student') {
-    const data = this.getData();
-    const res = data.examResults.find((r) => r.id === resultId);
-    if (res) {
-      if (target === 'parent') res.parentNotified = true;
-      if (target === 'student') res.studentNotified = true;
-      this.saveData(data);
-
-      if (supabase) {
-        supabase.from('exam_results').update({
-          parent_notified: res.parentNotified,
-          student_notified: res.studentNotified,
-        }).eq('id', resultId).then(({ error }) => {
-          if (error) console.error('Supabase markNotified error:', error);
-        });
-      }
-    }
-  }
-
-  // --- System Settings ---
+  // --- Settings ---
   public getSettings(): SystemSettings {
     const data = this.getData();
-    return {
-      ...DEFAULT_SETTINGS,
-      ...(data.settings || {}),
-    };
+    return data.settings || DEFAULT_SETTINGS;
   }
 
   public updateSettings(newSettings: Partial<SystemSettings>): SystemSettings {
@@ -847,6 +934,19 @@ class StorageService {
     };
     this.saveData(data, false);
     return data.settings;
+  }
+
+  public clearSessionAttendance(groupId: string): void {
+    const data = this.getData();
+    const todayStr = new Date().toISOString().split('T')[0];
+    const session = data.sessions.find((s) => s.groupId === groupId && s.date === todayStr);
+    if (session) {
+      data.attendance = data.attendance.filter((a) => a.sessionId !== session.id);
+      this.saveData(data);
+      if (supabase) {
+        supabase.from('attendance').delete().eq('session_id', session.id).then(() => {});
+      }
+    }
   }
 
   // --- Backup & Recovery ---
@@ -868,87 +968,6 @@ class StorageService {
     } catch {
       return false;
     }
-  }
-
-  private sharedKioskChannel: any = null;
-
-  private getSharedKioskChannel() {
-    if (!supabase) return null;
-    if (!this.sharedKioskChannel) {
-      this.sharedKioskChannel = supabase.channel('kiosk_live_sync_v3', {
-        config: {
-          broadcast: { ack: true },
-        },
-      });
-      this.sharedKioskChannel.subscribe((status: string) => {
-        console.log('📡 Supabase Realtime Channel Status:', status);
-      });
-    }
-    return this.sharedKioskChannel;
-  }
-
-  // --- Multi-Device Realtime Kiosk Sync (Mobile <-> Laptop) ---
-  public broadcastKioskEvent(event: {
-    type: 'SCAN_RESULT' | 'ATTENDANCE_UPDATE' | 'PAYMENT_COLLECTED';
-    payload: any;
-  }) {
-    // 1. Supabase Realtime Broadcast Channel
-    if (supabase) {
-      try {
-        const channel = this.getSharedKioskChannel();
-        if (channel) {
-          channel.send({
-            type: 'broadcast',
-            event: 'kiosk_action',
-            payload: event,
-          });
-        }
-      } catch (err) {
-        console.warn('Supabase broadcast error:', err);
-      }
-    }
-
-    // 2. Browser BroadcastChannel API (Cross-tab / Local network)
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      try {
-        const bc = new BroadcastChannel('nashwa_kiosk_sync_bus');
-        bc.postMessage(event);
-      } catch {}
-    }
-  }
-
-  public subscribeToKioskEvents(callback: (event: { type: string; payload: any }) => void): () => void {
-    let broadcastChannel: BroadcastChannel | null = null;
-
-    if (supabase) {
-      try {
-        const channel = this.getSharedKioskChannel();
-        if (channel) {
-          channel.on('broadcast', { event: 'kiosk_action' }, ({ payload }: any) => {
-            if (payload) callback(payload);
-          });
-        }
-      } catch (err) {
-        console.warn('Supabase subscribe error:', err);
-      }
-    }
-
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      try {
-        broadcastChannel = new BroadcastChannel('nashwa_kiosk_sync_bus');
-        broadcastChannel.onmessage = (msg) => {
-          if (msg.data) {
-            callback(msg.data);
-          }
-        };
-      } catch {}
-    }
-
-    return () => {
-      if (broadcastChannel) {
-        broadcastChannel.close();
-      }
-    };
   }
 
   public resetToDefault() {

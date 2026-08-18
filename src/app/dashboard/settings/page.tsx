@@ -32,6 +32,7 @@ import {
   Calendar,
   Users,
   Check,
+  Zap,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -280,6 +281,27 @@ export default function SettingsDashboardPage() {
     } finally {
       setIsSendingTg(false);
       setTimeout(() => setTgTestStatus(null), 5000);
+    }
+  };
+
+  const handleRegisterTelegramWebhook = async () => {
+    setIsSendingTg(true);
+    setTgTestStatus('جاري ضبط وربط الـ Webhook رسمياً مع تليجرام...');
+    try {
+      const webhookUrl = 'https://nashwa-academy.vercel.app/api/telegram';
+      const res = await fetch(`https://api.telegram.org/bot${settings.telegramBotToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}`);
+      const json = await res.json();
+      if (json.ok) {
+        setTgTestStatus('🎉 تم ربط الـ Webhook بنجاح! الأزرار التفاعلية في تليجرام تعمل الآن 100%');
+        sound.playSuccessChime();
+      } else {
+        setTgTestStatus(`⚠️ رد تليجرام: ${json.description || 'فشل التفعيل'}`);
+      }
+    } catch (err: any) {
+      setTgTestStatus(`⚠️ تعذر الاتصال بسيرفر تليجرام: ${err.message}`);
+    } finally {
+      setIsSendingTg(false);
+      setTimeout(() => setTgTestStatus(null), 6000);
     }
   };
 
@@ -536,7 +558,16 @@ export default function SettingsDashboardPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleRegisterTelegramWebhook}
+              disabled={isSendingTg}
+              className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-brand-600 to-cyan-500 hover:from-brand-500 text-white font-black text-xs transition flex items-center gap-1.5 shadow-md shadow-brand-600/20 active:scale-95"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              <span>ربط الـ Webhook رسمياً ⚡</span>
+            </button>
+
             <a
               href="https://t.me/MissNashwa_bot"
               target="_blank"
@@ -544,7 +575,7 @@ export default function SettingsDashboardPage() {
               className="px-3.5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-xs"
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              فتح البوت في تليجرام
+              فتح البوت
             </a>
 
             <button

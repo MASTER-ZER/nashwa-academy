@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { db } from '@/lib/storage';
+import { db, getAcademicMonthsList, getCurrentMonthLabel } from '@/lib/storage';
 import { sound } from '@/lib/audio';
 import { Student, Group, Subscription, SystemData } from '@/types';
 import { CreditCard, CheckCircle2, AlertCircle, DollarSign, Search, Filter } from 'lucide-react';
@@ -9,7 +9,7 @@ import confetti from 'canvas-confetti';
 
 export default function SubscriptionsDashboardPage() {
   const [data, setData] = useState<SystemData | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState('أكتوبر 2026');
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthLabel());
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PAID' | 'UNPAID'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -88,19 +88,19 @@ export default function SubscriptionsDashboardPage() {
           </p>
         </div>
 
-        {/* Month Selector */}
+        {/* Dynamic Month Selector */}
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <label className="text-xs font-bold text-slate-600 dark:text-slate-300">الشهر:</label>
           <select
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:border-brand-500 focus:outline-none"
+            className="px-3.5 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:border-brand-500 focus:outline-none"
           >
-            <option value="أغسطس 2026">أغسطس 2026</option>
-            <option value="سبتمبر 2026">سبتمبر 2026</option>
-            <option value="أكتوبر 2026">أكتوبر 2026</option>
-            <option value="نوفمبر 2026">نوفمبر 2026</option>
-            <option value="ديسمبر 2026">ديسمبر 2026</option>
+            {getAcademicMonthsList().map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
           </select>
         </div>
       </div>
