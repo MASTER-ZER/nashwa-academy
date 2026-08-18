@@ -1,4 +1,4 @@
-import { Student, Group, Session, AttendanceRecord, Subscription, Exam, ExamResult, SystemData } from '@/types';
+import { Student, Group, Session, AttendanceRecord, Subscription, Exam, ExamResult, SystemData, SystemSettings } from '@/types';
 import { supabase, isSupabaseConfigured } from './supabase';
 
 const STORAGE_KEY = 'nashwa_academy_db_v3';
@@ -146,6 +146,18 @@ const INITIAL_EXAM_RESULTS: ExamResult[] = [
     gradedAt: '2026-10-16T10:05:00Z',
   },
 ];
+
+const DEFAULT_SETTINGS: SystemSettings = {
+  teacherName: 'مس نشوى',
+  subjectName: 'العلوم المتكاملة',
+  academicYearLabel: 'الصف الأول الثانوي',
+  subscriptionPrice: 250,
+  adminPasscode: '2026',
+  assistantPhone: '01012345678',
+  centerLocation: 'سنتر الأوائل - قاعة 1',
+  telegramBotToken: '8897471175:AAH__IM1R9Ro2yYdClmtZ_X4TvzFZsr5uUs',
+  telegramAdminChatId: '6602868710',
+};
 
 // --- DB Data Mappers (camelCase <-> snake_case) ---
 function studentToDb(s: Student) {
@@ -800,6 +812,26 @@ class StorageService {
         });
       }
     }
+  }
+
+  // --- System Settings ---
+  public getSettings(): SystemSettings {
+    const data = this.getData();
+    return {
+      ...DEFAULT_SETTINGS,
+      ...(data.settings || {}),
+    };
+  }
+
+  public updateSettings(newSettings: Partial<SystemSettings>): SystemSettings {
+    const data = this.getData();
+    data.settings = {
+      ...DEFAULT_SETTINGS,
+      ...(data.settings || {}),
+      ...newSettings,
+    };
+    this.saveData(data, false);
+    return data.settings;
   }
 
   // --- Backup & Recovery ---

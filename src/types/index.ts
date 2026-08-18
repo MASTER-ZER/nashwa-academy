@@ -75,6 +75,18 @@ export interface ExamResult {
   gradedAt: string;
 }
 
+export interface SystemSettings {
+  teacherName: string;
+  subjectName: string;
+  academicYearLabel: string;
+  subscriptionPrice: number;
+  adminPasscode: string;
+  assistantPhone: string;
+  centerLocation: string;
+  telegramBotToken: string;
+  telegramAdminChatId: string;
+}
+
 export interface SystemData {
   groups: Group[];
   students: Student[];
@@ -83,5 +95,6 @@ export interface SystemData {
   subscriptions: Subscription[];
   exams: Exam[];
   examResults: ExamResult[];
+  settings?: SystemSettings;
   lastBackupDate?: string;
 }
