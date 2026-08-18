@@ -328,8 +328,9 @@ export default function StudentPortalPage() {
                 {/* Pass Top Header */}
                 <div className="flex items-start justify-between border-b border-white/15 pb-4">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-400 to-emerald-400 flex items-center justify-center text-slate-950 font-black shadow-md">
-                      <Sparkles className="w-4 h-4 text-slate-950" />
+                    <div className="w-10 h-10 rounded-xl overflow-hidden shadow-md border border-white/20">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src="/logo.png" alt="مس نشوى" className="w-full h-full object-cover" />
                     </div>
                     <div>
                       <h3 className="text-sm font-black tracking-tight">أكاديمية مس نشوى</h3>
