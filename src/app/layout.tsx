@@ -8,13 +8,13 @@ import ThemeToggle from "@/components/ThemeToggle";
 import { ThemeProvider } from "@/context/ThemeContext";
 
 export const metadata: Metadata = {
-  title: "منصة مس نشوى | العلوم المتكاملة - أولى ثانوي",
-  description: "المنصة الرسمية المعتمدة لمادة العلوم المتكاملة للصف الأول الثانوي لمس نشوى",
+  title: "أكاديمية مس نشوى | العلوم المتكاملة - أولى ثانوي",
+  description: "المنصة الرقمية الأولى المعتمدة لمادة العلوم المتكاملة للصف الأول الثانوي لمس نشوى",
   manifest: "/manifest.json",
 };
 
 export const viewport: Viewport = {
-  themeColor: "#007aff",
+  themeColor: "#030712",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -33,14 +33,21 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
       </head>
-      <body className="min-h-screen bg-slate-50 dark:bg-[#060b17] text-slate-900 dark:text-slate-100 flex flex-col font-sans antialiased selection:bg-brand-500 selection:text-white transition-colors duration-200">
+      <body className="min-h-screen bg-slate-50 dark:bg-[#030712] text-slate-900 dark:text-slate-100 flex flex-col font-sans antialiased selection:bg-brand-500 selection:text-white transition-colors duration-300 relative overflow-x-hidden">
         <ThemeProvider>
+          {/* Ambient Background Aura Lights (Active in Dark Mode) */}
+          <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10 dark:block hidden">
+            <div className="absolute -top-40 right-10 w-[500px] h-[500px] bg-cyan-500/10 rounded-full blur-[120px] animate-pulse-slow" />
+            <div className="absolute top-1/3 -left-40 w-[600px] h-[600px] bg-brand-600/10 rounded-full blur-[140px] animate-pulse-slow" style={{ animationDelay: '2s' }} />
+            <div className="absolute -bottom-40 right-1/4 w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[130px] animate-pulse-slow" style={{ animationDelay: '3s' }} />
+          </div>
+
           {/* Public iOS Liquid Glass Header */}
           <header className="sticky top-0 z-40 px-3 sm:px-6 py-3 no-print">
             <div className="max-w-7xl mx-auto h-16 rounded-2xl liquid-glass px-4 sm:px-6 flex items-center justify-between">
               {/* Logo & Brand */}
               <Link href="/" className="flex items-center gap-3 group active:scale-95 transition-transform">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-brand-600 via-brand-500 to-cyan-400 text-white flex items-center justify-center shadow-lg shadow-brand-500/25 group-hover:scale-105 transition-transform">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-brand-600 via-cyan-500 to-emerald-400 text-white flex items-center justify-center shadow-lg shadow-brand-500/25 group-hover:scale-105 transition-transform">
                   <Sparkles className="w-5 h-5" />
                 </div>
                 <div>
@@ -62,7 +69,7 @@ export default function RootLayout({
                 </Link>
                 <Link
                   href="/student"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-black bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-md shadow-brand-600/20 active:scale-95 transition"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-black bg-brand-600 hover:bg-brand-500 text-white rounded-xl shadow-lg shadow-brand-600/25 active:scale-95 transition"
                 >
                   <GraduationCap className="w-4 h-4 text-cyan-200" />
                   بوابة الطالب

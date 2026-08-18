@@ -45,7 +45,7 @@ export default function AdminPasscodeGate({ children }: { children: React.ReactN
     if (inputPin === ADMIN_PASSCODE) {
       sound.playSuccessChime();
       try {
-        confetti({ particleCount: 50, spread: 60 });
+        confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
       } catch {}
       if (rememberMe) {
         localStorage.setItem(AUTH_KEY, 'true');
@@ -63,18 +63,13 @@ export default function AdminPasscodeGate({ children }: { children: React.ReactN
     }
   };
 
-  const handleManualSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    verifyPin(pin);
-  };
-
   if (isAuthenticated === null) {
-    return null; // Loading state
+    return null;
   }
 
   if (isAuthenticated) {
     return (
-      <div className="relative">
+      <div className="relative animate-ios-spring">
         {/* Floating Quick Admin Logout Button in header */}
         <div className="flex justify-end mb-2 no-print">
           <button
@@ -83,9 +78,9 @@ export default function AdminPasscodeGate({ children }: { children: React.ReactN
               setIsAuthenticated(false);
               setPin('');
             }}
-            className="text-[11px] font-bold text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 flex items-center gap-1 py-1 px-3 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            className="text-[11px] font-bold text-slate-500 hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400 flex items-center gap-1.5 py-1.5 px-3 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800/80 transition border border-transparent hover:border-rose-500/20"
           >
-            <Lock className="w-3 h-3" />
+            <Lock className="w-3.5 h-3.5" />
             <span>قفل لوحة التحكم والخروج</span>
           </button>
         </div>
@@ -97,12 +92,12 @@ export default function AdminPasscodeGate({ children }: { children: React.ReactN
   return (
     <div className="min-h-[75vh] flex items-center justify-center p-4">
       <div
-        className={`w-full max-w-md p-8 rounded-3xl liquid-glass text-center space-y-6 shadow-2xl border border-white/40 dark:border-white/10 ${
+        className={`w-full max-w-md p-8 rounded-3xl liquid-glass text-center space-y-6 shadow-2xl border border-slate-200 dark:border-white/10 ${
           isShaking ? 'animate-bounce' : 'animate-ios-spring'
         }`}
       >
         {/* Lock Icon Badge */}
-        <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-brand-600 to-cyan-500 text-white flex items-center justify-center mx-auto shadow-xl shadow-brand-500/20 scale-110">
+        <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-brand-600 via-cyan-500 to-emerald-400 text-white flex items-center justify-center mx-auto shadow-xl shadow-cyan-500/25 scale-110 border border-white/20">
           <KeyRound className="w-8 h-8" />
         </div>
 
@@ -120,10 +115,10 @@ export default function AdminPasscodeGate({ children }: { children: React.ReactN
             return (
               <div
                 key={idx}
-                className={`w-4 h-4 rounded-full transition-all duration-200 ${
+                className={`w-4 h-4 rounded-full transition-all duration-300 ${
                   isFilled
-                    ? 'bg-brand-600 dark:bg-cyan-400 scale-125 shadow-md shadow-brand-500/50'
-                    : 'bg-slate-200 dark:bg-slate-700 border border-slate-300 dark:border-slate-600'
+                    ? 'bg-cyan-400 scale-125 shadow-lg shadow-cyan-400/80 border border-cyan-200'
+                    : 'bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700'
                 }`}
               />
             );
@@ -131,7 +126,7 @@ export default function AdminPasscodeGate({ children }: { children: React.ReactN
         </div>
 
         {errorMsg && (
-          <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center justify-center gap-1.5 animate-pulse">
+          <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/70 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center justify-center gap-1.5 animate-pulse border border-rose-500/20">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{errorMsg}</span>
           </div>
@@ -144,7 +139,7 @@ export default function AdminPasscodeGate({ children }: { children: React.ReactN
               key={num}
               type="button"
               onClick={() => handleDigitClick(num)}
-              className="w-16 h-16 rounded-full bg-white/80 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-700 active:scale-90 text-xl font-black text-slate-800 dark:text-white shadow-xs border border-white/60 dark:border-white/5 transition flex items-center justify-center mx-auto"
+              className="w-16 h-16 rounded-full bg-white/90 dark:bg-slate-900/90 hover:bg-white dark:hover:bg-slate-800 active:scale-90 text-xl font-black text-slate-800 dark:text-white shadow-md border border-slate-200/80 dark:border-white/10 hover:border-cyan-500/40 transition flex items-center justify-center mx-auto"
             >
               {num}
             </button>
@@ -153,14 +148,14 @@ export default function AdminPasscodeGate({ children }: { children: React.ReactN
           <button
             type="button"
             onClick={() => handleDigitClick('0')}
-            className="w-16 h-16 rounded-full bg-white/80 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-700 active:scale-90 text-xl font-black text-slate-800 dark:text-white shadow-xs border border-white/60 dark:border-white/5 transition flex items-center justify-center mx-auto"
+            className="w-16 h-16 rounded-full bg-white/90 dark:bg-slate-900/90 hover:bg-white dark:hover:bg-slate-800 active:scale-90 text-xl font-black text-slate-800 dark:text-white shadow-md border border-slate-200/80 dark:border-white/10 hover:border-cyan-500/40 transition flex items-center justify-center mx-auto"
           >
             0
           </button>
           <button
             type="button"
             onClick={handleDeleteDigit}
-            className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800/40 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 transition flex items-center justify-center mx-auto"
+            className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800/60 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 transition flex items-center justify-center mx-auto border border-transparent dark:border-slate-700"
           >
             حذف
           </button>
@@ -173,9 +168,9 @@ export default function AdminPasscodeGate({ children }: { children: React.ReactN
             id="rememberMe"
             checked={rememberMe}
             onChange={(e) => setRememberMe(e.target.checked)}
-            className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+            className="rounded border-slate-300 dark:border-slate-700 text-brand-600 focus:ring-brand-500 bg-white dark:bg-slate-800"
           />
-          <label htmlFor="rememberMe" className="font-semibold cursor-pointer">
+          <label htmlFor="rememberMe" className="font-semibold cursor-pointer select-none">
             تذكر تسجيل الدخول على هذا الجهاز 🛡️
           </label>
         </div>
@@ -184,7 +179,7 @@ export default function AdminPasscodeGate({ children }: { children: React.ReactN
         <div className="pt-2 border-t border-slate-200/50 dark:border-slate-800">
           <Link
             href="/"
-            className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-brand-600 dark:text-slate-400 font-bold transition"
+            className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-cyan-400 font-bold transition"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>العودة للرئيسية وبوابة الطالب</span>
