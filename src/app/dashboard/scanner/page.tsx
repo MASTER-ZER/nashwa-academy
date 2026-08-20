@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { db } from '@/lib/storage';
+import { db, getCurrentMonthLabel } from '@/lib/storage';
 import { sound } from '@/lib/audio';
 import { Group, Student, AttendanceRecord, SystemData } from '@/types';
 import { 
@@ -27,7 +27,9 @@ import {
   AlertTriangle,
   Radio,
   XCircle,
-  HelpCircle
+  HelpCircle,
+  Barcode,
+  Keyboard
 } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import confetti from 'canvas-confetti';
@@ -69,6 +71,7 @@ export default function ScannerPage() {
   const [searchResults, setSearchResults] = useState<Student[]>([]);
   const [sessionToast, setSessionToast] = useState<string>('');
   const [liveSyncPulse, setLiveSyncPulse] = useState(false);
+  const [hardwareScanToast, setHardwareScanToast] = useState(false);
 
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const lastScannedCodeRef = useRef<string>('');
@@ -81,10 +84,11 @@ export default function ScannerPage() {
     const sessionAtt = d.attendance.filter(
       (a) => a.groupId === groupId && a.scannedAt.startsWith(todayStr)
     );
+    const curMonth = getCurrentMonthLabel();
 
     const mapped = sessionAtt.map((rec) => {
       const std = d.students.find((s) => s.id === rec.studentId);
-      const sub = d.subscriptions.find((s) => s.studentId === rec.studentId && s.month === 'أكتوبر 2026');
+      const sub = d.subscriptions.find((s) => s.studentId === rec.studentId && s.month === curMonth);
       const isMakeup = rec.status === 'MAKEUP' || (std && std.groupId !== groupId);
 
       return {
@@ -176,9 +180,11 @@ export default function ScannerPage() {
     const cleanCode = rawCode.trim();
     if (!cleanCode) return;
 
-    // Debounce duplicate scans within 2 seconds unless explicit action
+    sound.unlockAudio();
+
+    // Debounce duplicate scans of the exact same code within 2.5 seconds
     const now = Date.now();
-    if (!forceMakeup && cleanCode === lastScannedCodeRef.current && now - lastScanTimeRef.current < 2000) {
+    if (!forceMakeup && cleanCode === lastScannedCodeRef.current && now - lastScanTimeRef.current < 2500) {
       return;
     }
     lastScannedCodeRef.current = cleanCode;
@@ -236,7 +242,7 @@ export default function ScannerPage() {
       if (result.subscriptionPaid) {
         sound.playSuccessChime();
         try {
-          confetti({ particleCount: 50, spread: 60, origin: { y: 0.5 } });
+          confetti({ particleCount: 45, spread: 55, origin: { y: 0.5 } });
         } catch {}
       } else {
         sound.playWarningAlert();
@@ -273,8 +279,46 @@ export default function ScannerPage() {
     });
   }, [selectedGroupId]);
 
-  // Start Camera
+  // Global Hardware USB / Bluetooth Laser Barcode Scanner Listener
+  useEffect(() => {
+    let barcodeBuffer = '';
+    let lastKeyTime = 0;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInputActive = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
+
+      const currentTime = Date.now();
+      const timeDiff = currentTime - lastKeyTime;
+      lastKeyTime = currentTime;
+
+      if (e.key === 'Enter') {
+        if (barcodeBuffer.trim().length >= 1) {
+          const code = barcodeBuffer.trim();
+          barcodeBuffer = '';
+          setHardwareScanToast(true);
+          setTimeout(() => setHardwareScanToast(false), 2000);
+          processCode(code);
+          if (!isInputActive) e.preventDefault();
+        }
+      } else if (e.key.length === 1) {
+        // Reset buffer if human typing with long pause (> 150ms)
+        if (timeDiff > 150 && !isInputActive) {
+          barcodeBuffer = '';
+        }
+        if (!isInputActive) {
+          barcodeBuffer += e.key;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [processCode]);
+
+  // Start Camera with Wide-Spectrum Hardware Barcode Acceleration
   const startCamera = async () => {
+    sound.unlockAudio();
     setCameraError('');
     setIsCameraActive(true);
 
@@ -284,16 +328,25 @@ export default function ScannerPage() {
           formatsToSupport: [
             Html5QrcodeSupportedFormats.QR_CODE,
             Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
             Html5QrcodeSupportedFormats.EAN_13,
             Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.ITF,
           ],
           verbose: false,
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true,
+          },
         });
       }
 
       const config = {
-        fps: 25,
-        qrbox: { width: 260, height: 260 },
+        fps: 30,
+        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+          const w = Math.floor(Math.min(viewfinderWidth * 0.92, 340));
+          const h = Math.floor(Math.min(viewfinderHeight * 0.7, 230));
+          return { width: w, height: h };
+        },
         aspectRatio: 1.0,
       };
 
@@ -309,7 +362,7 @@ export default function ScannerPage() {
       console.error('Camera start error:', err);
       setIsCameraActive(false);
       setCameraError(
-        'تعذر الوصول للكاميرا. يرجى التأكد من إعطاء إذن الكاميرا للمتصفح.'
+        'تعذر تشغيل الكاميرا. يرجى التأكد من منح الإذن للمتصفح أو استخدام مسدس الباركود USB.'
       );
     }
   };
@@ -369,7 +422,9 @@ export default function ScannerPage() {
 
   // Instant Cash Payment Collector (From Mobile or Laptop)
   const handleCollectCash = (studentId: string) => {
-    db.toggleSubscription(studentId, 'أكتوبر 2026', 'مس نشوى');
+    sound.unlockAudio();
+    const curMonth = getCurrentMonthLabel();
+    db.toggleSubscription(studentId, curMonth, 'مس نشوى');
     sound.playSuccessChime();
     try {
       confetti({ particleCount: 50, spread: 60 });
@@ -424,7 +479,7 @@ export default function ScannerPage() {
       {/* Top Bar: Group Selector & Live Sync Indicator */}
       <div className="liquid-glass rounded-3xl p-4 sm:p-6 shadow-sm border border-slate-200 dark:border-cyan-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="space-y-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-50 dark:bg-cyan-950/70 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800 text-xs font-bold">
               <QrCode className="w-3.5 h-3.5 text-cyan-500" />
               <span>كشك الحضور والاسكانر الفوري</span>
@@ -439,6 +494,12 @@ export default function ScannerPage() {
               <Radio className="w-3 h-3 animate-pulse" />
               <span>المزامنة اللحظية نشطة (موبايل + لابتوب)</span>
             </span>
+
+            {/* Hardware Laser Scanner Ready Tag */}
+            <span className="hidden md:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+              <Keyboard className="w-3 h-3 text-brand-500" />
+              <span>مسدس الباركود USB مدعوم تلقائياً ⚡</span>
+            </span>
           </div>
 
           <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -451,417 +512,449 @@ export default function ScannerPage() {
           <select
             value={selectedGroupId}
             onChange={(e) => handleGroupChange(e.target.value)}
-            className="flex-1 sm:w-64 px-3.5 py-2.5 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:border-brand-500 focus:outline-none shadow-xs"
+            className="flex-1 sm:flex-initial px-3.5 py-2.5 text-xs font-bold rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500 shadow-xs"
           >
             {groups.map((grp) => (
               <option key={grp.id} value={grp.id}>
-                {grp.name} ({grp.time})
+                {grp.name}
               </option>
             ))}
           </select>
 
           <button
             onClick={handleResetSession}
-            className="px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition flex items-center gap-1.5"
-            title="إعادة تعيين حضور الحصة للبدء من جديد"
+            className="px-3.5 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-700 dark:text-slate-300 hover:text-rose-600 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
+            title="إعادة تعيين حضور الحصة"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">بدء من جديد</span>
+            <span className="hidden sm:inline">تصفير الحصة</span>
           </button>
         </div>
       </div>
 
       {sessionToast && (
-        <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-2 shadow-sm animate-ios-spring">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-          <span>{sessionToast}</span>
+        <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-bold text-center animate-ios-spring">
+          {sessionToast}
         </div>
       )}
 
-      {/* Main Scanner Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Camera Viewport & The 4 Live Action Alert Cards */}
+      {hardwareScanToast && (
+        <div className="p-3 rounded-2xl bg-cyan-50 dark:bg-cyan-950/80 border border-cyan-300 dark:border-cyan-700 text-cyan-800 dark:text-cyan-200 text-xs font-bold text-center animate-ios-spring flex items-center justify-center gap-2">
+          <Barcode className="w-4 h-4 text-cyan-500 animate-pulse" />
+          <span>تم التقاط الباركود من قارئ الليزر بنجاح ⚡</span>
+        </div>
+      )}
+
+      {/* Main Grid: Left Scanner Feed & Right Live Log */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* LEFT COLUMN: Camera & Scan Area (7 Cols) */}
         <div className="lg:col-span-7 space-y-4">
-          <div className="bg-slate-950 rounded-3xl p-5 sm:p-7 text-white relative overflow-hidden shadow-2xl border border-slate-800 min-h-[480px] flex flex-col justify-between">
-            
-            {/* THE 4 DISTINCT REAL-TIME ACTION ALERT CARDS */}
-            {scanResult && (
-              <div
-                className={`absolute inset-0 z-30 flex flex-col items-center justify-center p-6 text-center transition-all animate-ios-spring ${
-                  scanResult.type === 'SUCCESS_PAID'
-                    ? 'bg-slate-950/95 border-4 border-emerald-500 text-white'
-                    : scanResult.type === 'SUCCESS_UNPAID'
-                    ? 'bg-slate-950/95 border-4 border-rose-500 text-white'
-                    : scanResult.type === 'DIFFERENT_GROUP'
-                    ? 'bg-slate-950/95 border-4 border-amber-500 text-white'
-                    : scanResult.type === 'ALREADY_RECORDED'
-                    ? 'bg-slate-950/95 border-4 border-sky-500 text-white'
-                    : 'bg-slate-900/95 border-2 border-slate-700 text-white'
-                }`}
-              >
-                {/* 🟢 1. GREEN ALERT: Success & Fully Paid */}
-                {scanResult.type === 'SUCCESS_PAID' && (
-                  <div className="space-y-4 max-w-md mx-auto">
-                    <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center mx-auto shadow-2xl shadow-emerald-500/50 scale-110 border-2 border-white/30">
-                      <CheckCircle2 className="w-12 h-12 text-white" />
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="px-3.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-black">
-                        تم القبول وتسجيل الحضور ✅
-                      </span>
-                      <h2 className="text-2xl sm:text-3xl font-black mt-2">{scanResult.student?.name}</h2>
-                      <p className="text-xs text-slate-300 font-mono">كود الطالب: #{scanResult.student?.code} • {scanResult.student?.phone}</p>
-                    </div>
-
-                    <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 text-xs font-bold">
-                      <DollarSign className="w-4 h-4" />
-                      <span>الاشتراك مسدد لشهر ({scanResult.currentMonth}) 💵</span>
-                    </div>
-
-                    <div className="pt-2">
-                      <button
-                        onClick={handleDismissOverlay}
-                        className="px-6 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 text-xs font-bold transition"
-                      >
-                        إغلاق ومسح الطالب التالي ⏭️
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* 🔴 2. RED ALERT: Present But Unpaid Subscription */}
-                {scanResult.type === 'SUCCESS_UNPAID' && (
-                  <div className="space-y-4 max-w-md mx-auto">
-                    <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-rose-600 to-amber-500 flex items-center justify-center mx-auto shadow-2xl shadow-rose-500/50 scale-110 border-2 border-white/30">
-                      <AlertCircle className="w-12 h-12 text-white" />
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="px-3.5 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-black">
-                        ⚠️ تنبيه: اشتراك الشهر غير مسدد (250 جنيه)
-                      </span>
-                      <h2 className="text-2xl sm:text-3xl font-black mt-2">{scanResult.student?.name}</h2>
-                      <p className="text-xs text-slate-300 font-mono">كود: #{scanResult.student?.code} • {scanResult.student?.phone}</p>
-                    </div>
-
-                    {/* Instant 1-Click Action Buttons */}
-                    <div className="space-y-2 pt-2">
-                      <button
-                        onClick={() => handleCollectCash(scanResult.student!.id)}
-                        className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 active:scale-95 text-white font-black text-sm shadow-xl shadow-emerald-500/30 transition flex items-center justify-center gap-2 border border-emerald-400/30"
-                      >
-                        <DollarSign className="w-5 h-5" />
-                        استلام 250 جنيه كاش وتأكيد السداد فوراً 💵
-                      </button>
-
-                      <button
-                        onClick={handleDismissOverlay}
-                        className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 text-xs font-bold transition"
-                      >
-                        السماح بالدخول وتأجيل الدفع مؤقتاً ⏳
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* 🔵 3. BLUE ALERT: Duplicate Scan / Already Attended */}
-                {scanResult.type === 'ALREADY_RECORDED' && (
-                  <div className="space-y-4 max-w-md mx-auto">
-                    <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-sky-600 to-cyan-400 flex items-center justify-center mx-auto shadow-2xl shadow-sky-500/50 scale-110 border-2 border-white/30">
-                      <AlertTriangle className="w-12 h-12 text-white" />
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="px-3.5 py-1 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30 text-xs font-black">
-                        ⛔ تنبيه: كارت مكرر - الطالب مسجل دخول مسبقاً!
-                      </span>
-                      <h2 className="text-2xl sm:text-3xl font-black mt-2">{scanResult.student?.name}</h2>
-                      <p className="text-xs text-sky-300 font-bold bg-sky-950/80 py-1.5 px-4 rounded-xl inline-block mt-2 border border-sky-500/30">
-                        تم تسجيل حضور هذا الطالب مسبقاً الساعة [{scanResult.recordedAt}]
-                      </p>
-                    </div>
-
-                    <p className="text-xs text-slate-300 bg-white/10 p-3 rounded-2xl border border-white/10">
-                      🛑 يرجى إيقاف الطالب والتحقق من هويته لمنع استخدام نفس الكارت لأكثر من شخص.
-                    </p>
-
-                    <div className="pt-2">
-                      <button
-                        onClick={handleDismissOverlay}
-                        className="px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition"
-                      >
-                        تم التحقق وإغلاق التنبيه ✅
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* 🟠 4. ORANGE ALERT: Different Group / Makeup Needed */}
-                {scanResult.type === 'DIFFERENT_GROUP' && (
-                  <div className="space-y-4 max-w-md mx-auto">
-                    <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-amber-600 to-yellow-400 flex items-center justify-center mx-auto shadow-2xl shadow-amber-500/50 scale-110 border-2 border-white/30">
-                      <RefreshCw className="w-12 h-12 text-white" />
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="px-3.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-black">
-                        🔄 تنبيه: الطالب مسجل في مجموعة أخرى!
-                      </span>
-                      <h2 className="text-2xl sm:text-3xl font-black mt-2">{scanResult.student?.name}</h2>
-                      <p className="text-xs text-amber-300 font-bold bg-amber-950/80 py-1 px-3 rounded-lg inline-block mt-1">
-                        مجموعته الأصلية: {scanResult.originalGroupName}
-                      </p>
-                    </div>
-
-                    {/* Action 1 & Action 2 */}
-                    <div className="space-y-2 pt-2">
-                      <button
-                        onClick={() => handleAcceptMakeup(scanResult.student!.code)}
-                        className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-95 text-white font-black text-xs shadow-xl shadow-amber-500/30 transition flex items-center justify-center gap-2 border border-amber-400/30"
-                      >
-                        <Check className="w-4 h-4" />
-                        قبول الطالب كـ (حضور تعويض) في حصة اليوم ✅
-                      </button>
-
-                      <button
-                        onClick={handleDismissOverlay}
-                        className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 text-xs font-bold transition flex items-center justify-center gap-1.5"
-                      >
-                        <XCircle className="w-4 h-4 text-rose-400" />
-                        تفادي الحصة وانتظار موعد مجموعته ⛔
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* 5. Not Found */}
-                {scanResult.type === 'NOT_FOUND' && (
-                  <div className="space-y-3">
-                    <AlertCircle className="w-16 h-16 mx-auto text-rose-400" />
-                    <h2 className="text-xl font-bold">كود غير مسجل!</h2>
-                    <p className="text-xs text-slate-300">لم يتم العثور على طالب بهذا الكود أو أن الاستمارة قيد المراجعة.</p>
-                    <button onClick={handleDismissOverlay} className="px-5 py-2 bg-white/10 rounded-xl text-xs font-bold mt-2">
-                      إغلاق
-                    </button>
-                  </div>
-                )}
+          <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-200 dark:border-slate-800 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-cyan-500/10 text-cyan-500 flex items-center justify-center">
+                  <Camera className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900 dark:text-white">عين الكاميرا الذكية</h2>
+                  <p className="text-[11px] text-slate-400">وجه باركود كارت الطالب أمام العدسة</p>
+                </div>
               </div>
-            )}
 
-            {/* Camera Controls Bar */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between text-xs">
-                <span className="flex items-center gap-2 text-slate-300 font-bold">
-                  <Camera className="w-4 h-4 text-cyan-400" />
-                  كاميرا مسح الباركود والـ QR
-                </span>
+              {/* Camera Controls */}
+              <div className="flex items-center gap-2">
                 {isCameraActive && (
                   <button
                     onClick={toggleFacingMode}
-                    className="text-[11px] text-cyan-300 hover:text-cyan-200 flex items-center gap-1 bg-white/10 px-3 py-1 rounded-xl transition"
+                    className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-xs font-bold transition flex items-center gap-1"
+                    title="تبديل الكاميرا (أمامية / خلفية)"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
-                    تبديل الكاميرا
                   </button>
                 )}
+
+                <button
+                  onClick={isCameraActive ? stopCamera : startCamera}
+                  className={`px-4 py-2 rounded-2xl text-xs font-black transition flex items-center gap-1.5 active:scale-95 shadow-md ${
+                    isCameraActive
+                      ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-rose-500/20'
+                      : 'bg-gradient-to-r from-brand-600 to-cyan-500 hover:from-brand-500 text-white shadow-brand-600/25'
+                  }`}
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  <span>{isCameraActive ? 'إيقاف الكاميرا ⏹️' : 'تشغيل الكاميرا 📷'}</span>
+                </button>
               </div>
+            </div>
 
-              {/* Camera Target Container */}
-              <div className="relative w-full max-w-[320px] aspect-square mx-auto rounded-3xl overflow-hidden bg-black/90 border-2 border-dashed border-cyan-500/40 flex items-center justify-center shadow-inner">
-                <div id="qr-reader-target" className="w-full h-full" />
-
-                {isCameraActive && (
-                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                    <div className="w-52 h-52 border-2 border-cyan-400/80 rounded-2xl relative">
-                      <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-cyan-300" />
-                      <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-cyan-300" />
-                      <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-cyan-300" />
-                      <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-cyan-300" />
-                      <div className="w-full h-0.5 bg-gradient-to-r from-transparent via-cyan-400 to-transparent absolute top-1/2 -translate-y-1/2 animate-laser" />
-                    </div>
-                  </div>
-                )}
-
-                {!isCameraActive && (
-                  <div className="text-center p-6 space-y-4">
-                    <div className="w-16 h-16 rounded-2xl bg-cyan-950/60 border border-cyan-500/30 flex items-center justify-center mx-auto text-cyan-400">
-                      <QrCode className="w-8 h-8" />
-                    </div>
-                    <div className="space-y-1">
-                      <p className="font-bold text-sm text-slate-200">الكاميرا متوقفة</p>
-                      <p className="text-[11px] text-slate-400">اضغط لتشغيل الكاميرا ومسح كروت الطلاب</p>
-                    </div>
-                    <button
-                      onClick={startCamera}
-                      className="px-6 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 active:scale-95 text-white font-black text-xs shadow-lg shadow-emerald-500/30 transition flex items-center gap-2 mx-auto"
-                    >
-                      <Camera className="w-4 h-4" />
-                      تشغيل الكاميرا 📹
-                    </button>
-                  </div>
-                )}
+            {cameraError && (
+              <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300 text-xs font-bold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{cameraError}</span>
               </div>
+            )}
 
-              {cameraError && (
-                <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-800 text-rose-300 text-xs font-bold flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{cameraError}</span>
-                </div>
-              )}
+            {/* Video Viewfinder Container */}
+            <div className="relative rounded-2xl overflow-hidden bg-slate-950 min-h-[290px] flex items-center justify-center border border-slate-800 shadow-inner">
+              <div id="qr-reader-target" className="w-full h-full min-h-[290px]" />
 
-              {isCameraActive && (
-                <div className="flex items-center justify-center gap-2 pt-1">
+              {!isCameraActive && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-3 bg-slate-950/90 backdrop-blur-xs">
+                  <div className="w-14 h-14 rounded-2xl bg-slate-800/80 text-cyan-400 flex items-center justify-center shadow-lg border border-white/10">
+                    <Barcode className="w-7 h-7 animate-pulse" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-white">الكاميرا متوقفة حالياً</p>
+                    <p className="text-[11px] text-slate-400 max-w-xs">
+                      اضغط على &quot;تشغيل الكاميرا&quot; للمسح بالموبايل، أو استخدم قارئ الباركود الليزر مباشرة
+                    </p>
+                  </div>
                   <button
-                    onClick={stopCamera}
-                    className="px-4 py-2 rounded-xl bg-rose-600/80 hover:bg-rose-700 text-white font-bold text-xs transition"
+                    onClick={startCamera}
+                    className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-brand-600 to-cyan-500 text-white font-black text-xs shadow-lg shadow-brand-600/30 active:scale-95 transition"
                   >
-                    إيقاف الكاميرا ⏹️
+                    بدء المسح الآن 📷
                   </button>
                 </div>
               )}
             </div>
 
-            {/* Quick Demo Test Buttons for All 4 Cases */}
-            <div className="pt-3 border-t border-slate-800">
-              <span className="text-[11px] font-bold text-slate-400 block mb-1.5">
-                ⚡ تجربة سريعة للحالات الأربعة:
-              </span>
+            {/* Quick Test Barcode Buttons (For Demo & Testing) */}
+            <div className="pt-2 border-t border-slate-200/50 dark:border-slate-800 space-y-2">
+              <div className="flex items-center justify-between text-[11px] text-slate-500 font-bold">
+                <span>⚡ محاكاة سريعة لتجربة الحالات الأربعة:</span>
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <button
                   onClick={() => processCode('101')}
-                  className="p-2 rounded-xl bg-emerald-950/60 text-emerald-300 border border-emerald-800/60 hover:bg-emerald-900/80 text-[11px] font-bold transition text-center"
+                  className="py-2 px-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold text-center transition"
                 >
-                  🟢 101 مسدد
+                  🟢 1. مسدد ومقبول (#101)
                 </button>
                 <button
                   onClick={() => processCode('102')}
-                  className="p-2 rounded-xl bg-rose-950/60 text-rose-300 border border-rose-800/60 hover:bg-rose-900/80 text-[11px] font-bold transition text-center"
+                  className="py-2 px-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-[11px] font-bold text-center transition"
                 >
-                  🔴 102 غير مسدد
-                </button>
-                <button
-                  onClick={() => processCode('101')}
-                  className="p-2 rounded-xl bg-sky-950/60 text-sky-300 border border-sky-800/60 hover:bg-sky-900/80 text-[11px] font-bold transition text-center"
-                >
-                  🔵 دخول مكرر
+                  🔴 2. غير مسدد (#102)
                 </button>
                 <button
                   onClick={() => processCode('103')}
-                  className="p-2 rounded-xl bg-amber-950/60 text-amber-300 border border-amber-800/60 hover:bg-amber-900/80 text-[11px] font-bold transition text-center"
+                  className="py-2 px-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-[11px] font-bold text-center transition"
                 >
-                  🟠 مجموعة أخرى
+                  🟠 3. مجموعة أخرى (#103)
+                </button>
+                <button
+                  onClick={() => processCode('999')}
+                  className="py-2 px-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-[11px] font-bold text-center transition"
+                >
+                  ⚪ 4. كود غير مسجل
                 </button>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Right Column: Emergency Search & Live Session Attendees */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* Emergency Fast Search */}
-          <div className="liquid-glass rounded-3xl p-5 shadow-sm space-y-3">
-            <div className="flex items-center gap-2">
-              <Search className="w-4 h-4 text-brand-600 dark:text-cyan-400" />
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">البحث اليدوي السريع للطوارئ</h2>
+          {/* Emergency Manual Search Bar */}
+          <div className="liquid-glass rounded-3xl p-4 sm:p-5 shadow-sm space-y-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
+              <Search className="w-4 h-4 text-cyan-500" />
+              <span>بحث يدوي بالاسم أو الكود (في حالة نسيان الكارت):</span>
             </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              إذا نسي الطالب الكارت، ابحث باسمه لتسجيل حضوره بنقرة واحدة:
-            </p>
 
             <div className="relative">
               <input
                 type="text"
-                placeholder="اكتب اسم الطالب أو الكود..."
+                placeholder="اكتب اسم الطالب أو الكود أو رقم الهاتف..."
                 value={searchQuery}
                 onChange={(e) => handleSearchChange(e.target.value)}
-                className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                className="w-full px-4 py-2.5 rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-bold focus:outline-none focus:border-brand-500 shadow-inner"
               />
             </div>
 
-            {/* Search Results Dropdown */}
             {searchResults.length > 0 && (
-              <div className="divide-y divide-slate-100 dark:divide-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-800">
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-lg">
                 {searchResults.map((std) => (
-                  <div key={std.id} className="p-2.5 flex items-center justify-between hover:bg-white dark:hover:bg-slate-700 transition">
+                  <div
+                    key={std.id}
+                    className="p-3 flex items-center justify-between text-xs hover:bg-slate-50 dark:hover:bg-slate-800/60 transition"
+                  >
                     <div>
-                      <p className="text-xs font-bold text-slate-900 dark:text-white">{std.name}</p>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">كود: #{std.code} • {std.phone}</p>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-brand-600 dark:text-cyan-400">#{std.code}</span>
+                        <p className="font-bold text-slate-900 dark:text-white">{std.name}</p>
+                      </div>
+                      <p className="text-[11px] text-slate-400 font-mono">{std.phone}</p>
                     </div>
+
                     <button
                       onClick={() => {
                         processCode(std.code);
                         setSearchQuery('');
                         setSearchResults([]);
                       }}
-                      className="px-3 py-1 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-[11px] font-bold shadow-xs"
+                      className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-brand-600 to-cyan-500 text-white font-bold text-xs shadow-xs"
                     >
-                      تسجيل حضور ✅
+                      تسجيل الحضور ✅
                     </button>
                   </div>
                 ))}
               </div>
             )}
           </div>
+        </div>
 
-          {/* Live Session Attendance Feed */}
-          <div className="liquid-glass rounded-3xl p-5 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                سجل الحاضرين في الحصة ({recentScans.length})
-              </h2>
-              <span className="text-xs font-black text-brand-700 dark:text-cyan-400 bg-brand-50 dark:bg-brand-950/80 px-2.5 py-1 rounded-xl border border-brand-200/60 dark:border-cyan-500/30">
-                {attendedCount} / {groupStudentsCount} طالب
+        {/* RIGHT COLUMN: 4-STATE HOLO FEEDBACK CARD & LIVE SESSION LOG (5 Cols) */}
+        <div className="lg:col-span-5 space-y-4">
+          {/* 1. DYNAMIC COLOR-CODED SCAN RESULT CARD (The 4 Distinct Alert States) */}
+          {scanResult ? (
+            <div className="animate-ios-spring space-y-3">
+              {/* 🟢 STATE 1: SUCCESS & PAID */}
+              {scanResult.type === 'SUCCESS_PAID' && (
+                <div className="p-6 rounded-3xl bg-gradient-to-br from-emerald-500/15 via-emerald-500/5 to-teal-500/10 border-2 border-emerald-500 shadow-2xl shadow-emerald-500/20 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-500 text-white flex items-center gap-1.5 shadow-md">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>تم القبول وتسجيل الحضور ✅</span>
+                    </span>
+                    <span className="text-[11px] font-mono text-emerald-600 dark:text-emerald-300 font-bold">
+                      {scanResult.timestamp}
+                    </span>
+                  </div>
+
+                  <div className="text-right space-y-1">
+                    <span className="text-xs font-mono font-black text-emerald-600 dark:text-emerald-400">
+                      #{scanResult.student?.code}
+                    </span>
+                    <h3 className="text-2xl font-black text-slate-900 dark:text-white">
+                      {scanResult.student?.name}
+                    </h3>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 font-semibold">
+                      {selectedGroup?.name}
+                    </p>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-200 text-xs font-bold flex items-center justify-between">
+                    <span>حالة الاشتراك الشهري:</span>
+                    <span className="font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                      <Check className="w-4 h-4" />
+                      <span>مسدد بالكامل ({scanResult.currentMonth})</span>
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={handleDismissOverlay}
+                    className="w-full py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-xs font-bold transition"
+                  >
+                    إغلاق ومتابعة المسح ⏩
+                  </button>
+                </div>
+              )}
+
+              {/* 🔴 STATE 2: SUCCESS & UNPAID (250 EGP Prompt) */}
+              {scanResult.type === 'SUCCESS_UNPAID' && (
+                <div className="p-6 rounded-3xl bg-gradient-to-br from-rose-500/20 via-rose-500/10 to-orange-500/10 border-2 border-rose-500 shadow-2xl shadow-rose-500/25 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="px-3 py-1 rounded-full text-xs font-black bg-rose-600 text-white flex items-center gap-1.5 shadow-md">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      <span>⚠️ تنبيه: اشتراك الشهر غير مسدد (250 ج)</span>
+                    </span>
+                    <span className="text-[11px] font-mono text-rose-600 dark:text-rose-300 font-bold">
+                      {scanResult.timestamp}
+                    </span>
+                  </div>
+
+                  <div className="text-right space-y-1">
+                    <span className="text-xs font-mono font-black text-rose-600 dark:text-rose-400">
+                      #{scanResult.student?.code}
+                    </span>
+                    <h3 className="text-2xl font-black text-slate-900 dark:text-white">
+                      {scanResult.student?.name}
+                    </h3>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 font-semibold">
+                      {selectedGroup?.name}
+                    </p>
+                  </div>
+
+                  {/* 1-Click Action Buttons */}
+                  <div className="space-y-2 pt-1">
+                    <button
+                      onClick={() => handleCollectCash(scanResult.student!.id)}
+                      className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-black text-sm shadow-lg shadow-emerald-600/30 transition active:scale-95 flex items-center justify-center gap-2"
+                    >
+                      <DollarSign className="w-5 h-5" />
+                      <span>💵 استلام 250 جنيه كاش وتأكيد السداد فوراً</span>
+                    </button>
+
+                    <button
+                      onClick={handleDismissOverlay}
+                      className="w-full py-2.5 rounded-2xl bg-white/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-white transition border border-slate-200 dark:border-slate-700"
+                    >
+                      السماح بالدخول اليوم وتأجيل الدفع مؤقتاً ⏳
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 🔵 STATE 3: DUPLICATE ENTRY (Already Recorded Today) */}
+              {scanResult.type === 'ALREADY_RECORDED' && (
+                <div className="p-6 rounded-3xl bg-gradient-to-br from-blue-500/20 via-blue-500/10 to-indigo-500/10 border-2 border-blue-500 shadow-2xl shadow-blue-500/25 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="px-3 py-1 rounded-full text-xs font-black bg-blue-600 text-white flex items-center gap-1.5 shadow-md">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>⛔ كارت مكرر: الطالب مسجل دخول مسبقاً!</span>
+                    </span>
+                    <span className="text-[11px] font-mono text-blue-600 dark:text-blue-300 font-bold">
+                      {scanResult.timestamp}
+                    </span>
+                  </div>
+
+                  <div className="text-right space-y-1">
+                    <span className="text-xs font-mono font-black text-blue-600 dark:text-blue-400">
+                      #{scanResult.student?.code}
+                    </span>
+                    <h3 className="text-2xl font-black text-slate-900 dark:text-white">
+                      {scanResult.student?.name}
+                    </h3>
+                    <p className="text-xs text-blue-800 dark:text-blue-200 font-bold">
+                      تم تسجيل حضور هذا الكارت اليوم في تمام الساعة ({scanResult.recordedAt})
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-900 dark:text-blue-200 text-xs">
+                    🛑 <b>تنبيه أمان:</b> يرجى التحقق من هوية الطالب لمنع تمرير نفس الكارت لأكثر من شخص.
+                  </div>
+
+                  <button
+                    onClick={handleDismissOverlay}
+                    className="w-full py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold transition"
+                  >
+                    حسناً، تم التحقق ✅
+                  </button>
+                </div>
+              )}
+
+              {/* 🟠 STATE 4: DIFFERENT GROUP (Make-up Alert) */}
+              {scanResult.type === 'DIFFERENT_GROUP' && (
+                <div className="p-6 rounded-3xl bg-gradient-to-br from-amber-500/20 via-amber-500/10 to-orange-500/10 border-2 border-amber-500 shadow-2xl shadow-amber-500/25 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="px-3 py-1 rounded-full text-xs font-black bg-amber-600 text-white flex items-center gap-1.5 shadow-md">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <span>🔄 تنبيه: الطالب مسجل في مجموعة أخرى!</span>
+                    </span>
+                    <span className="text-[11px] font-mono text-amber-600 dark:text-amber-300 font-bold">
+                      {scanResult.timestamp}
+                    </span>
+                  </div>
+
+                  <div className="text-right space-y-1">
+                    <span className="text-xs font-mono font-black text-amber-600 dark:text-amber-400">
+                      #{scanResult.student?.code}
+                    </span>
+                    <h3 className="text-2xl font-black text-slate-900 dark:text-white">
+                      {scanResult.student?.name}
+                    </h3>
+                    <p className="text-xs text-amber-800 dark:text-amber-200 font-bold">
+                      المجموعة الأصلية: ({scanResult.originalGroupName})
+                    </p>
+                  </div>
+
+                  <div className="space-y-2 pt-1">
+                    <button
+                      onClick={() => handleAcceptMakeup(scanResult.student!.code)}
+                      className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 text-white font-black text-xs shadow-lg shadow-amber-600/30 transition active:scale-95 flex items-center justify-center gap-1.5"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>✅ قبول الطالب كـ (حضور تعويض) في حصة اليوم</span>
+                    </button>
+
+                    <button
+                      onClick={handleDismissOverlay}
+                      className="w-full py-2.5 rounded-2xl bg-white/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-white transition border border-slate-200 dark:border-slate-700"
+                    >
+                      ⛔ تفادي الحصة وانتظار موعد مجموعته
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ⚪ STATE 5: NOT FOUND */}
+              {scanResult.type === 'NOT_FOUND' && (
+                <div className="p-6 rounded-3xl bg-slate-900 border-2 border-slate-700 text-white text-center space-y-3 shadow-2xl">
+                  <XCircle className="w-10 h-10 text-rose-500 mx-auto" />
+                  <h3 className="text-lg font-black">الكود غير مسجل في المنصة</h3>
+                  <p className="text-xs text-slate-400">
+                    يرجى التحقق من كود الطالب أو إضافته من صفحة إدارة الطلاب أولاً
+                  </p>
+                  <button
+                    onClick={handleDismissOverlay}
+                    className="px-5 py-2 rounded-xl bg-slate-800 text-xs font-bold"
+                  >
+                    إغلاق
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Standby Card when no scan is active */
+            <div className="liquid-glass rounded-3xl p-6 text-center space-y-3 border border-slate-200/60 dark:border-slate-800">
+              <div className="w-12 h-12 rounded-2xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-cyan-400 flex items-center justify-center mx-auto shadow-md">
+                <QrCode className="w-6 h-6 animate-pulse" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">في انتظار مسح كارت الطالب...</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                بمجرد مسح الكارت، ستظهر نتيجة القبول والاشتراك هنا فوراً
+              </p>
+            </div>
+          )}
+
+          {/* 2. LIVE SESSION ATTENDANCE STREAM */}
+          <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200/50 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-cyan-500" />
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">سجل حضور الحصة المباشر</h3>
+              </div>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-black bg-cyan-50 dark:bg-cyan-950/80 text-cyan-700 dark:text-cyan-300">
+                {attendedCount} حاضر / {groupStudentsCount} طالب
               </span>
             </div>
 
             {recentScans.length === 0 ? (
-              <div className="text-center py-8 text-slate-400 space-y-2 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
-                <QrCode className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
-                <p className="text-xs font-semibold">بانتظار مسح كروت الطلاب لهذه الحصة...</p>
+              <div className="text-center py-10 text-slate-400 space-y-2">
+                <Clock className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
+                <p className="text-xs font-bold">لم يبدأ تسجيل حضور أي طالب بعد</p>
               </div>
             ) : (
-              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                {recentScans.map((scan, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 rounded-2xl bg-white/70 dark:bg-slate-800/70 border border-slate-200/70 dark:border-slate-700/60 flex items-center justify-between text-xs hover:bg-white dark:hover:bg-slate-700 transition"
-                  >
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <p className="font-bold text-slate-900 dark:text-white">{scan.student.name}</p>
-                        {scan.isMakeup && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-bold">
-                            تعويض
-                          </span>
-                        )}
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[340px] overflow-y-auto scrollbar-none space-y-1">
+                {recentScans.map((item, idx) => (
+                  <div key={idx} className="py-2.5 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 flex items-center justify-center text-[10px] font-bold font-mono">
+                        {recentScans.length - idx}
+                      </span>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-bold text-slate-900 dark:text-white">{item.student.name}</p>
+                          <span className="font-mono text-[10px] text-slate-400 font-bold">#{item.student.code}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-mono">{item.time}</p>
                       </div>
-                      <p className="text-[10px] text-slate-400 font-mono">
-                        كود: #{scan.student.code} • الساعة {scan.time}
-                      </p>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                      {item.isMakeup && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300">
+                          تعويض
+                        </span>
+                      )}
                       <span
-                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                          scan.isPaid
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                          item.isPaid
                             ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                             : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
                         }`}
                       >
-                        {scan.isPaid ? 'مسدد ✅' : 'غير مسدد ⚠️'}
+                        {item.type}
                       </span>
-
-                      {!scan.isPaid && (
-                        <button
-                          onClick={() => handleCollectCash(scan.student.id)}
-                          className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-bold text-[10px] hover:bg-emerald-700 transition shadow-2xs"
-                          title="استلام كاش 250 جنيه وتسجيل السداد فوراً"
-                        >
-                          تحصيل 💵
-                        </button>
-                      )}
                     </div>
                   </div>
                 ))}
@@ -871,5 +964,13 @@ export default function ScannerPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function Users(props: any) {
+  return (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </svg>
   );
 }

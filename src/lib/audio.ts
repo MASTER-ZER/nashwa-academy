@@ -17,6 +17,15 @@ class SoundEngine {
     return this.audioCtx;
   }
 
+  unlockAudio() {
+    try {
+      const ctx = this.getAudioContext();
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume();
+      }
+    } catch {}
+  }
+
   // "تين" Chime: Pleasant, high-pitched double harmonic bell (Positive attendance & paid)
   playSuccessChime() {
     try {
