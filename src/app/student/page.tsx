@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { db, getCurrentMonthLabel } from '@/lib/storage';
+import { sound } from '@/lib/audio';
 import { Student, Group, AttendanceRecord, Subscription, ExamResult, Exam } from '@/types';
 import {
   GraduationCap,
@@ -29,7 +30,10 @@ import {
   Star,
   Check,
   Smartphone,
-  ExternalLink
+  ExternalLink,
+  Image as ImageIcon,
+  FileText,
+  Printer
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import QRCode from 'qrcode';
@@ -49,6 +53,7 @@ export default function StudentPortalPage() {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [cardDisplayType, setCardDisplayType] = useState<'QR' | 'BARCODE'>('QR');
   const [copiedMsg, setCopiedMsg] = useState(false);
+  const [isDownloadingImage, setIsDownloadingImage] = useState(false);
 
   const barcodeSvgRef = useRef<SVGSVGElement | null>(null);
 
@@ -199,6 +204,46 @@ export default function StudentPortalPage() {
     setErrorMsg('');
   };
 
+  // Download 3D Card as high-res PNG into user's photo gallery
+  const handleDownloadCardImage = async () => {
+    const cardElement = document.getElementById('student-wallet-card');
+    if (!cardElement || !currentStudent) return;
+
+    setIsDownloadingImage(true);
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const canvas = await html2canvas(cardElement, {
+        scale: 3, // Ultra-sharp 3x retina quality
+        useCORS: true,
+        backgroundColor: null,
+        logging: false,
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = imgData;
+      link.download = `كارت_طالب_مس_نشوى_${currentStudent.code}_${currentStudent.name.replace(/\s+/g, '_')}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      sound.playSuccessChime();
+      try {
+        confetti({ particleCount: 35, spread: 55, origin: { y: 0.7 } });
+      } catch {}
+    } catch (err) {
+      console.error('Download card error', err);
+      alert('حدث خطأ أثناء تنزيل الصورة، يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsDownloadingImage(false);
+    }
+  };
+
+  // Print & Save as PDF
+  const handleSavePdf = () => {
+    window.print();
+  };
+
   // Copy student portal link
   const handleShareCard = () => {
     if (!currentStudent) return;
@@ -293,7 +338,7 @@ export default function StudentPortalPage() {
         /* 2. ACTIVE STUDENT DASHBOARD & APPLE WALLET PASS */
         <div className="space-y-6 animate-ios-spring">
           {/* Top Profile Header */}
-          <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-slate-200/80 dark:border-slate-800">
+          <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-slate-200/80 dark:border-slate-800 no-print">
             <div className="flex items-center gap-3.5">
               <div className="w-14 h-14 rounded-2xl overflow-hidden shadow-md border border-white/20 shrink-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -331,7 +376,7 @@ export default function StudentPortalPage() {
           </div>
 
           {/* Navigation Tabs (Segmented Controls) */}
-          <div className="flex items-center gap-1 p-1.5 rounded-2xl liquid-glass overflow-x-auto scrollbar-none border border-slate-200/80 dark:border-slate-800">
+          <div className="flex items-center gap-1 p-1.5 rounded-2xl liquid-glass overflow-x-auto scrollbar-none border border-slate-200/80 dark:border-slate-800 no-print">
             {[
               { id: 'CARD', label: 'كارت الهوية الرقمي', icon: QrCode },
               { id: 'ATTENDANCE', label: `سجل الحضور (${attendance.length})`, icon: CalendarCheck },
@@ -360,8 +405,8 @@ export default function StudentPortalPage() {
           {/* TAB 1: Apple Wallet Pass Card View */}
           {activeTab === 'CARD' && (
             <div className="space-y-6 max-w-md mx-auto animate-ios-spring">
-              {/* Apple Wallet Pass Container */}
-              <div className="apple-wallet-pass p-7 text-white space-y-6 shadow-2xl">
+              {/* Apple Wallet Pass Container (Has id="student-wallet-card" for Image/PDF Export) */}
+              <div id="student-wallet-card" className="apple-wallet-pass p-7 text-white space-y-6 shadow-2xl">
                 {/* Pass Top Header */}
                 <div className="flex items-start justify-between border-b border-white/15 pb-4">
                   <div className="flex items-center gap-2.5">
@@ -381,29 +426,42 @@ export default function StudentPortalPage() {
                 </div>
 
                 {/* Pass Student Details */}
-                <div className="space-y-3">
+                <div className="space-y-3.5">
                   <div>
                     <span className="text-[10px] uppercase tracking-wider text-emerald-200/80 font-bold block">اسم الطالب</span>
                     <h2 className="text-2xl font-black tracking-tight">{currentStudent.name}</h2>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4 pt-1 text-xs">
-                    <div>
-                      <span className="text-[10px] text-emerald-200/80 font-bold block">المجموعة والموعد</span>
-                      <p className="font-bold text-white leading-tight">{group ? group.name : '—'}</p>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-emerald-200/80 font-bold block">حالة الاشتراك</span>
-                      <p className={`font-bold flex items-center gap-1 ${isCurrentMonthPaid ? 'text-emerald-300' : 'text-amber-300'}`}>
-                        {isCurrentMonthPaid ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
-                        <span>{isCurrentMonthPaid ? `مسدد (${currentAcademicMonth})` : `مستحق (${currentAcademicMonth})`}</span>
-                      </p>
-                    </div>
+                  {/* Clear Day-by-Day Schedule Boxes */}
+                  <div className="space-y-1.5 pt-1 text-xs">
+                    <span className="text-[10px] text-emerald-200/80 font-bold block">المجموعة ومواعيد الحصص الأسبوعية:</span>
+                    <p className="font-bold text-white text-xs leading-tight">{group ? group.name : '—'}</p>
+                    
+                    {group && group.days && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {group.days.map((day, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2.5 py-1 rounded-lg bg-white/15 border border-white/20 text-white font-bold text-[11px] flex items-center gap-1"
+                          >
+                            <span>📅 {day}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-1 text-xs border-t border-white/10 flex items-center justify-between">
+                    <span className="text-[10px] text-emerald-200/80 font-bold">حالة الاشتراك الشهري:</span>
+                    <p className={`font-bold flex items-center gap-1 ${isCurrentMonthPaid ? 'text-emerald-300' : 'text-amber-300'}`}>
+                      {isCurrentMonthPaid ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                      <span>{isCurrentMonthPaid ? `مسدد (${currentAcademicMonth})` : `مستحق (${currentAcademicMonth})`}</span>
+                    </p>
                   </div>
                 </div>
 
                 {/* Code Selector (QR vs Barcode) */}
-                <div className="pt-2 flex justify-center">
+                <div className="pt-2 flex justify-center no-print">
                   <div className="inline-flex p-1 rounded-xl bg-white/10 border border-white/15 text-xs font-bold">
                     <button
                       onClick={() => setCardDisplayType('QR')}
@@ -442,22 +500,35 @@ export default function StudentPortalPage() {
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex gap-2">
-                <button
-                  onClick={handleShareCard}
-                  className="flex-1 py-3 rounded-2xl liquid-glass hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-white font-bold text-xs transition flex items-center justify-center gap-1.5 border border-slate-200 dark:border-slate-700 shadow-2xs"
-                >
-                  <Share2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  <span>{copiedMsg ? 'تم نسخ بيانات الكارت! ✅' : 'مشاركة الكارت'}</span>
-                </button>
+              {/* Action Buttons for Image Download & PDF Print */}
+              <div className="space-y-2 no-print">
+                <div className="flex gap-2">
+                  {/* Download Image Button */}
+                  <button
+                    onClick={handleDownloadCardImage}
+                    disabled={isDownloadingImage}
+                    className="flex-1 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-black text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/25 active:scale-95 disabled:opacity-50"
+                  >
+                    <ImageIcon className="w-4 h-4" />
+                    <span>{isDownloadingImage ? 'جاري الحفظ...' : 'تحميل الكارت في المعرض 🖼️'}</span>
+                  </button>
+
+                  {/* Save PDF / Print Button */}
+                  <button
+                    onClick={handleSavePdf}
+                    className="flex-1 py-3.5 rounded-2xl bg-brand-700 hover:bg-brand-800 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-xs active:scale-95"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>حفظ PDF للطباعة 📄</span>
+                  </button>
+                </div>
 
                 <button
-                  onClick={() => window.print()}
-                  className="flex-1 py-3 rounded-2xl bg-brand-700 hover:bg-brand-800 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-xs"
+                  onClick={handleShareCard}
+                  className="w-full py-2.5 rounded-2xl liquid-glass hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs transition flex items-center justify-center gap-1.5 border border-slate-200 dark:border-slate-700 shadow-2xs"
                 >
-                  <Download className="w-4 h-4" />
-                  <span>طباعة وحفظ PDF</span>
+                  <Share2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>{copiedMsg ? 'تم نسخ بيانات الكارت! ✅' : 'مشاركة بيانات الكارت'}</span>
                 </button>
               </div>
             </div>

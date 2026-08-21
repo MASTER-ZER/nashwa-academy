@@ -177,16 +177,26 @@ html, body {
   box-shadow: 0 0 20px -3px rgba(52, 199, 89, 0.4);
 }
 
-/* Print styles */
+/* Print styles for HD 3D Student Card & Printouts */
 @media print {
   body {
     background: white !important;
     color: black !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   .no-print {
     display: none !important;
   }
   .print-only {
     display: block !important;
+  }
+  .apple-wallet-pass {
+    box-shadow: none !important;
+    border: 2px solid #0f172a !important;
+    margin: 20px auto !important;
+    page-break-inside: avoid !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 }

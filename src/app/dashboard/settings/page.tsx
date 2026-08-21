@@ -99,25 +99,26 @@ export default function SettingsDashboardPage() {
     return unsub;
   }, []);
 
-  // Compute live group name preview dynamically and accurately
+  // Compute live group name preview dynamically and accurately with explicit day-by-day times
   const getComputedGroupName = () => {
     if (!hasSecondDay || day2 === 'حصة واحدة أسبوعياً') {
-      return `مجموعة (${groupNumber}) - ${day1} | ${day1Hour} ${day1Period}`;
+      return `مجموعة (${groupNumber}) - ${day1} (${day1Hour} ${day1Period})`;
     }
 
-    if (sameTimeAsDay1 || (day1Hour === day2Hour && day1Period === day2Period)) {
-      return `مجموعة (${groupNumber}) - ${day1} و${day2} | ${day1Hour} ${day1Period}`;
-    }
+    const t2Hour = sameTimeAsDay1 ? day1Hour : day2Hour;
+    const t2Period = sameTimeAsDay1 ? day1Period : day2Period;
 
-    return `مجموعة (${groupNumber}) - ${day1} (${day1Hour} ${day1Period}) و${day2} (${day2Hour} ${day2Period})`;
+    return `مجموعة (${groupNumber}) - ${day1} (${day1Hour} ${day1Period}) و${day2} (${t2Hour} ${t2Period})`;
   };
 
   // Compute time string
   const getComputedTimeString = () => {
-    if (!hasSecondDay || sameTimeAsDay1 || (day1Hour === day2Hour && day1Period === day2Period)) {
-      return `${day1Hour} ${day1Period}`;
+    if (!hasSecondDay || day2 === 'حصة واحدة أسبوعياً') {
+      return `${day1}: ${day1Hour} ${day1Period}`;
     }
-    return `${day1Hour} ${day1Period} / ${day2Hour} ${day2Period}`;
+    const t2Hour = sameTimeAsDay1 ? day1Hour : day2Hour;
+    const t2Period = sameTimeAsDay1 ? day1Period : day2Period;
+    return `${day1}: ${day1Hour} ${day1Period} | ${day2}: ${t2Hour} ${t2Period}`;
   };
 
   // Save General System Settings
