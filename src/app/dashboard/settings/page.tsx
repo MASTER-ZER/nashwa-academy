@@ -455,18 +455,23 @@ export default function SettingsDashboardPage() {
 
           {/* Admin Passcode */}
           <div className="space-y-1.5">
-            <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-              <Lock className="w-3.5 h-3.5 text-brand-500" />
-              <span>رمز مرور لوحة التحكم السري (PIN):</span>
+            <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-brand-500" />
+                <span>رمز مرور لوحة التحكم السري (PIN / Passcode):</span>
+              </span>
+              <span className="text-[10px] text-brand-600 dark:text-cyan-400 font-bold">الحالي: {settings.adminPasscode}</span>
             </label>
             <input
               type="text"
-              maxLength={6}
+              maxLength={20}
+              placeholder="مثال: 456 أو 2026"
               value={settings.adminPasscode}
               onChange={(e) => setSettings({ ...settings, adminPasscode: e.target.value })}
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-black tracking-widest focus:outline-none focus:border-brand-500 text-center"
               required
             />
+            <p className="text-[10px] text-slate-400">يمكنك وضع أي رقم سري مخصص مثل 456 أو 2026 لحماية لوحة التحكم من الطلاب</p>
           </div>
 
           {/* Assistant Phone */}
@@ -740,17 +745,29 @@ export default function SettingsDashboardPage() {
                 <Trash2 className="w-4 h-4" />
                 تصفير وحذف جميع البيانات التجريبية (بدء التشغيل الفعلي على بلاطة)
               </span>
+              <span className="text-[10px] bg-rose-200 dark:bg-rose-900/80 text-rose-800 dark:text-rose-300 font-bold px-2 py-0.5 rounded-full">
+                محمي بكلمة السر 🔒
+              </span>
             </div>
             <p className="text-[11px] text-slate-600 dark:text-slate-400">
-              حذف كافة الطلاب التجريبيين، وسجلات الحضور والغياب، وكشوف الاشتراكات، ونتائج الامتحانات السابقة للبدء من الصفر تماماً.
+              حذف كافة الطلاب التجريبيين، وسجلات الحضور والغياب، وكشوف الاشتراكات، ونتائج الامتحانات السابقة للبدء من الصفر تماماً مع الحفاظ على إعداداتك ومجموعاتك.
             </p>
             <button
               onClick={async () => {
-                if (confirm('هل أنت متأكد تماماً من تصفير كافة البيانات والطلاب لبدء العمل الحقيقي من الصفر؟')) {
+                const enteredPass = prompt('⚠️ منطقة خطرة: أدخل رمز المرور السري للمعلمة (PIN) لتأكيد تصفير ومسح جميع بيانات الطلاب:');
+                if (!enteredPass) return;
+
+                const currentPass = (settings.adminPasscode || '2026').trim();
+                if (enteredPass.trim() !== currentPass) {
+                  sound.playWarningAlert();
+                  alert('❌ رمز المرور غير صحيح! تم إلغاء عملية الحذف لحماية بيانات المنصة.');
+                  return;
+                }
+
+                if (confirm('تأكيد أخير: هل أنتِ متأكدة تماماً من مسح كافة الطلاب والحضور والبدء من الصفر؟')) {
                   await db.clearAllData();
-                  localStorage.clear();
                   sound.playSuccessChime();
-                  alert('تم تصفير المنصة بالكامل محلياً وسحابياً بنجاح! يمكنك الآن تسجيل وإدخال الطلاب الفعليين.');
+                  alert('✅ تم تصفير المنصة بالكامل محلياً وسحابياً بنجاح! يمكنك الآن تسجيل وإدخال الطلاب الفعليين.');
                   window.location.reload();
                 }
               }}

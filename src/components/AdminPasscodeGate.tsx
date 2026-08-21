@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Lock, Unlock, KeyRound, Sparkles, AlertCircle, ArrowLeft } from 'lucide-react';
+import { ShieldCheck, Lock, KeyRound, Sparkles, AlertCircle, ArrowLeft, Unlock, Check } from 'lucide-react';
 import { sound } from '@/lib/audio';
 import { db } from '@/lib/storage';
 import confetti from 'canvas-confetti';
@@ -15,6 +15,7 @@ export default function AdminPasscodeGate({ children }: { children: React.ReactN
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [rememberMe, setRememberMe] = useState<boolean>(true);
   const [isShaking, setIsShaking] = useState<boolean>(false);
+  const [showPassword, setShowPassword] = useState<boolean>(false);
 
   useEffect(() => {
     // Initial sync from DB
@@ -28,12 +29,13 @@ export default function AdminPasscodeGate({ children }: { children: React.ReactN
   }, []);
 
   const handleDigitClick = (digit: string) => {
-    if (pin.length >= 4) return;
+    if (pin.length >= 10) return;
     const nextPin = pin + digit;
     setPin(nextPin);
     sound.playInfoSound();
 
-    if (nextPin.length === 4) {
+    const currentPasscode = db.getSettings().adminPasscode || '2026';
+    if (nextPin === currentPasscode) {
       verifyPin(nextPin);
     }
   };
@@ -43,9 +45,16 @@ export default function AdminPasscodeGate({ children }: { children: React.ReactN
     setErrorMsg('');
   };
 
-  const verifyPin = (inputPin: string) => {
-    const currentPasscode = db.getSettings().adminPasscode || '2026';
-    if (inputPin === currentPasscode) {
+  const handleClearPin = () => {
+    setPin('');
+    setErrorMsg('');
+  };
+
+  const verifyPin = (inputPin?: string) => {
+    const pinToVerify = inputPin !== undefined ? inputPin : pin;
+    const currentPasscode = (db.getSettings().adminPasscode || '2026').trim();
+
+    if (pinToVerify.trim() === currentPasscode) {
       sound.playSuccessChime();
       try {
         confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
@@ -58,12 +67,21 @@ export default function AdminPasscodeGate({ children }: { children: React.ReactN
     } else {
       sound.playWarningAlert();
       setIsShaking(true);
-      setErrorMsg('رمز المرور غير صحيح، يرجى المحاولة مرة أخرى');
+      setErrorMsg('رمز المرور غير صحيح! يرجى إدخال الرقم السري الصحيح للمعلمة');
       setTimeout(() => {
         setIsShaking(false);
         setPin('');
-      }, 500);
+      }, 600);
     }
+  };
+
+  const handleSubmitForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pin.trim()) {
+      setErrorMsg('يرجى كتابة رمز المرور أولاً');
+      return;
+    }
+    verifyPin(pin);
   };
 
   if (isAuthenticated === null) {
@@ -95,7 +113,7 @@ export default function AdminPasscodeGate({ children }: { children: React.ReactN
   return (
     <div className="min-h-[75vh] flex items-center justify-center p-4">
       <div
-        className={`w-full max-w-md p-8 rounded-3xl liquid-glass text-center space-y-6 shadow-2xl border border-slate-200 dark:border-white/10 ${
+        className={`w-full max-w-md p-7 sm:p-9 rounded-3xl liquid-glass text-center space-y-6 shadow-2xl border border-slate-200 dark:border-white/10 ${
           isShaking ? 'animate-bounce' : 'animate-ios-spring'
         }`}
       >
@@ -105,67 +123,88 @@ export default function AdminPasscodeGate({ children }: { children: React.ReactN
         </div>
 
         <div className="space-y-1">
-          <h2 className="text-xl font-black text-slate-900 dark:text-white">بوابة المعلمة • مس نشوى</h2>
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">بوابة المعلمة • مس نشوى</h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
-            أدخلي رمز المرور السري (PIN) لفتح لوحة التحكم
+            أدخلي رمز المرور السري (Passcode / PIN) لفتح لوحة التحكم
           </p>
         </div>
 
-        {/* PIN Circles Display */}
-        <div className="flex items-center justify-center gap-4 py-2">
-          {[0, 1, 2, 3].map((idx) => {
-            const isFilled = pin.length > idx;
-            return (
-              <div
-                key={idx}
-                className={`w-4 h-4 rounded-full transition-all duration-300 ${
-                  isFilled
-                    ? 'bg-cyan-400 scale-125 shadow-lg shadow-cyan-400/80 border border-cyan-200'
-                    : 'bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700'
-                }`}
-              />
-            );
-          })}
-        </div>
+        {/* Input Box for typing or keypad */}
+        <form onSubmit={handleSubmitForm} className="space-y-3">
+          <div className="relative">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={pin}
+              autoFocus
+              placeholder="••••"
+              onChange={(e) => {
+                setPin(e.target.value);
+                setErrorMsg('');
+              }}
+              className="w-full py-3 px-4 rounded-2xl border-2 border-brand-500/40 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-mono font-black text-2xl text-center tracking-widest focus:outline-none focus:border-brand-500 shadow-inner"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute left-3.5 top-3.5 text-xs text-slate-400 hover:text-brand-500 font-bold"
+            >
+              {showPassword ? 'إخفاء' : 'إظهار'}
+            </button>
+          </div>
+
+          <button
+            type="submit"
+            className="w-full py-3 rounded-2xl bg-gradient-to-r from-brand-600 to-cyan-500 hover:from-brand-500 hover:to-cyan-400 text-white font-black text-sm shadow-md shadow-brand-600/30 transition active:scale-95 flex items-center justify-center gap-2"
+          >
+            <Unlock className="w-4 h-4" />
+            <span>تأكيد وفتح لوحة التحكم 🔓</span>
+          </button>
+        </form>
 
         {errorMsg && (
-          <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/70 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center justify-center gap-1.5 animate-pulse border border-rose-500/20">
+          <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/70 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center justify-center gap-1.5 animate-pulse border border-rose-500/20">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{errorMsg}</span>
           </div>
         )}
 
-        {/* Virtual iOS Keypad */}
-        <div className="grid grid-cols-3 gap-3 max-w-xs mx-auto pt-2" dir="ltr">
+        {/* Virtual Touch Keypad */}
+        <div className="grid grid-cols-3 gap-2.5 max-w-xs mx-auto pt-1" dir="ltr">
           {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((num) => (
             <button
               key={num}
               type="button"
               onClick={() => handleDigitClick(num)}
-              className="w-16 h-16 rounded-full bg-white/90 dark:bg-slate-900/90 hover:bg-white dark:hover:bg-slate-800 active:scale-90 text-xl font-black text-slate-800 dark:text-white shadow-md border border-slate-200/80 dark:border-white/10 hover:border-cyan-500/40 transition flex items-center justify-center mx-auto"
+              className="w-14 h-14 rounded-2xl bg-white/90 dark:bg-slate-900/90 hover:bg-white dark:hover:bg-slate-800 active:scale-90 text-lg font-black text-slate-800 dark:text-white shadow-xs border border-slate-200/80 dark:border-white/10 hover:border-cyan-500/40 transition flex items-center justify-center mx-auto"
             >
               {num}
             </button>
           ))}
-          <div />
+          <button
+            type="button"
+            onClick={handleClearPin}
+            className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800/60 hover:bg-slate-200 text-[11px] font-bold text-slate-500 dark:text-slate-400 transition flex items-center justify-center mx-auto"
+          >
+            مسح
+          </button>
           <button
             type="button"
             onClick={() => handleDigitClick('0')}
-            className="w-16 h-16 rounded-full bg-white/90 dark:bg-slate-900/90 hover:bg-white dark:hover:bg-slate-800 active:scale-90 text-xl font-black text-slate-800 dark:text-white shadow-md border border-slate-200/80 dark:border-white/10 hover:border-cyan-500/40 transition flex items-center justify-center mx-auto"
+            className="w-14 h-14 rounded-2xl bg-white/90 dark:bg-slate-900/90 hover:bg-white dark:hover:bg-slate-800 active:scale-90 text-lg font-black text-slate-800 dark:text-white shadow-xs border border-slate-200/80 dark:border-white/10 hover:border-cyan-500/40 transition flex items-center justify-center mx-auto"
           >
             0
           </button>
           <button
             type="button"
             onClick={handleDeleteDigit}
-            className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800/60 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 transition flex items-center justify-center mx-auto border border-transparent dark:border-slate-700"
+            className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800/60 hover:bg-slate-200 text-xs font-bold text-slate-600 dark:text-slate-300 transition flex items-center justify-center mx-auto"
           >
-            حذف
+            ⌫
           </button>
         </div>
 
         {/* Remember on this device */}
-        <div className="pt-2 flex items-center justify-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+        <div className="pt-1 flex items-center justify-center gap-2 text-xs text-slate-600 dark:text-slate-400">
           <input
             type="checkbox"
             id="rememberMe"
