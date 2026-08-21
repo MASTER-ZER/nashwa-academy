@@ -24,13 +24,18 @@ import {
   ArrowUpRight, 
   TrendingUp, 
   CheckCircle2, 
-  AlertCircle 
+  AlertCircle,
+  Share2,
+  HelpCircle,
+  MessageCircle,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 export default function DashboardOverviewPage() {
   const [data, setData] = useState<SystemData | null>(null);
   const [approvalToast, setApprovalToast] = useState<{ name: string; code: string } | null>(null);
+  const [copiedToast, setCopiedToast] = useState(false);
+  const [showGuideModal, setShowGuideModal] = useState(false);
 
   const loadData = () => {
     setData(db.getData());
@@ -111,14 +116,51 @@ export default function DashboardOverviewPage() {
           <div className="flex flex-wrap gap-2.5">
             <Link
               href="/dashboard/scanner"
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-black text-xs shadow-lg shadow-emerald-500/25 transition"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-black text-xs shadow-lg shadow-emerald-500/25 transition"
             >
               <QrCode className="w-4 h-4" />
-              فتح كشك السكانر ⚡
+              <span>كشك السكانر ⚡</span>
             </Link>
+
+            <button
+              onClick={() => {
+                const url = `${window.location.origin}/register`;
+                navigator.clipboard.writeText(url);
+                setCopiedToast(true);
+                setTimeout(() => setCopiedToast(false), 3000);
+                sound.playSuccessChime();
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-white/15 hover:bg-white/25 active:scale-95 text-white font-bold text-xs border border-white/20 transition backdrop-blur-xs"
+            >
+              <Share2 className="w-4 h-4 text-cyan-300" />
+              <span>{copiedToast ? 'تم نسخ الرابط! ✅' : 'نسخ رابط التسجيل 📲'}</span>
+            </button>
+
+            <Link
+              href="/dashboard/print-cards"
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-white/15 hover:bg-white/25 active:scale-95 text-white font-bold text-xs border border-white/20 transition backdrop-blur-xs"
+            >
+              <Printer className="w-4 h-4 text-amber-300" />
+              <span>طباعة الكروت 🖨️</span>
+            </Link>
+
+            <button
+              onClick={() => setShowGuideModal(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-cyan-500/20 hover:bg-cyan-500/30 active:scale-95 text-cyan-200 font-bold text-xs border border-cyan-400/30 transition backdrop-blur-xs"
+            >
+              <HelpCircle className="w-4 h-4 text-cyan-300" />
+              <span>دليل المساعد والمس 📖</span>
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Copied Toast Banner */}
+      {copiedToast && (
+        <div className="p-3 rounded-2xl bg-cyan-500 text-slate-950 font-black text-xs text-center animate-ios-spring shadow-lg">
+          🎉 تم نسخ رابط تسجيل الطلاب الجدد بنجاح! يمكنك الآن لصقه في جروبات الواتساب والتليجرام.
+        </div>
+      )}
 
       {/* Stats KPI Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -238,6 +280,94 @@ export default function DashboardOverviewPage() {
           </div>
         )}
       </div>
+
+      {/* Guide Modal for Assistant & Teacher */}
+      {showGuideModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="liquid-glass rounded-3xl p-6 sm:p-7 max-w-2xl w-full max-h-[85vh] overflow-y-auto space-y-5 border border-white/20 shadow-2xl animate-ios-spring">
+            <div className="flex items-center justify-between border-b border-slate-200/50 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-500 flex items-center justify-center font-bold">
+                  <HelpCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">دليل التشغيل السريع لمس نشوى والسكرتيرة 📖</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">خطوات بسيطة جداً لإدارة الحصة دون أي تعقيد</p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowGuideModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 hover:text-slate-900 dark:hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Step 1 */}
+              <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 space-y-1.5">
+                <div className="flex items-center gap-2 font-black text-emerald-800 dark:text-emerald-300">
+                  <span>1️⃣ أول ما توصلي السنتر قبل بداية الحصة:</span>
+                </div>
+                <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
+                  • حطي الموبايل على الستاند على باب القاعة، وافتحي صفحة <strong>(كشك السكانر)</strong> واضغطي &quot;تشغيل الكاميرا&quot;.
+                  <br />
+                  • كل طالب داخل يمرر كارت الـ QR أمام الكاميرا لمسافة شبر واحد.. هتسمعي نغمة نجاح ويظهر اسمه في ثانية واحدة.
+                </p>
+              </div>
+
+              {/* Step 2 */}
+              <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 space-y-1.5">
+                <div className="flex items-center gap-2 font-black text-amber-800 dark:text-amber-300">
+                  <span>2️⃣ لو طالب نسي الكارت في البيت:</span>
+                </div>
+                <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
+                  • متقلقيش، في نفس شاشة السكانر تحت الكاميرا هتلاقي خانة <strong>(بحث يدوي)</strong>، اكتبي أول حرفين من اسمه أو كوده واضغطي &quot;تسجيل الحضور ✅&quot;.
+                </p>
+              </div>
+
+              {/* Step 3 */}
+              <div className="p-4 rounded-2xl bg-brand-50 dark:bg-brand-950/40 border border-brand-200 dark:border-brand-800/60 space-y-1.5">
+                <div className="flex items-center gap-2 font-black text-brand-800 dark:text-cyan-300">
+                  <span>3️⃣ لو طالب دفع الاشتراك الشهري:</span>
+                </div>
+                <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
+                  • افتحي تبويب <strong>(الاشتراكات)</strong>، دوري على اسم الطالب واضغطي على الزر هيتحول من 🔴 غير مسدد إلى 🟢 مسدد فوراً.
+                </p>
+              </div>
+
+              {/* Step 4 */}
+              <div className="p-4 rounded-2xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/60 space-y-1.5">
+                <div className="flex items-center gap-2 font-black text-purple-800 dark:text-purple-300">
+                  <span>4️⃣ إرسال درجات الامتحان لولي الأمر:</span>
+                </div>
+                <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
+                  • من تبويب <strong>(الامتحانات)</strong>، بعد رصد الدرجة، اضغطي على زر الواتساب الأخضر جنب اسم الطالب، هيفتحلك محادثة ولي الأمر برسالة شيك جاهزة للإرسال بضغطة واحدة.
+                </p>
+              </div>
+            </div>
+
+            {/* Emergency Support Contact */}
+            <div className="pt-3 border-t border-slate-200/50 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="text-right">
+                <p className="font-bold text-slate-800 dark:text-white text-xs">وقفت معاكي أي مشكلة؟</p>
+                <p className="text-[11px] text-slate-500">مهندس النظام متاح للدعم الفني الفوري</p>
+              </div>
+
+              <a
+                href="https://wa.me/201012345678?text=أهلاً%20يا%20باشمهندس،%20محتاجة%20مساعدة%20في%20منصة%20مس%20نشوى"
+                target="_blank"
+                rel="noreferrer"
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs flex items-center gap-2 shadow-md"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>تواصل مع الدعم الفني (واتساب) 💬</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
