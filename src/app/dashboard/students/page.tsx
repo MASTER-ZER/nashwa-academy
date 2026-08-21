@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { db } from '@/lib/storage';
+import { db, getCurrentMonthLabel } from '@/lib/storage';
 import { Student, Group, SystemData } from '@/types';
 import {
   Users,
@@ -26,10 +26,14 @@ import {
   Download,
   Image as ImageIcon,
   ZoomIn,
+  FileText,
+  Printer,
+  Sparkles,
 } from 'lucide-react';
 import Link from 'next/link';
 import DateWheelPicker from '@/components/DateWheelPicker';
 import { compressStudentPhoto } from '@/lib/imageCompressor';
+import { generateStudentReportCardCanvas } from '@/lib/generateReportCard';
 
 export default function StudentsDirectoryPage() {
   const [data, setData] = useState<SystemData | null>(null);
@@ -39,6 +43,8 @@ export default function StudentsDirectoryPage() {
   const [viewingStudent, setViewingStudent] = useState<Student | null>(null);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [previewImageModal, setPreviewImageModal] = useState<{ url: string; name: string; code: string } | null>(null);
+  const [reportCardModal, setReportCardModal] = useState<{ student: Student; dataUrl: string; monthName: string } | null>(null);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
 
@@ -110,6 +116,50 @@ export default function StudentsDirectoryPage() {
     }
   };
 
+  const handleOpenReportCard = async (std: Student) => {
+    if (!data) return;
+    setIsGeneratingReport(true);
+    try {
+      const curMonth = getCurrentMonthLabel();
+      const grp = data.groups.find((g) => g.id === std.groupId) || null;
+      const stdAtt = data.attendance.filter((a) => a.studentId === std.id);
+      const groupSessions = data.sessions.filter((s) => s.groupId === std.groupId);
+      const totalSessions = Math.max(groupSessions.length, stdAtt.length, 4);
+
+      const stdExamResults = data.examResults
+        .filter((r) => r.studentId === std.id)
+        .map((r) => {
+          const exam = data.exams.find((e) => e.id === r.examId);
+          return exam ? { exam, result: r } : null;
+        })
+        .filter(Boolean) as { exam: any; result: any }[];
+
+      const isPaid = data.subscriptions.some((s) => s.studentId === std.id && s.month === curMonth && s.isPaid);
+
+      const dataUrl = await generateStudentReportCardCanvas({
+        student: std,
+        group: grp,
+        attendanceCount: stdAtt.length,
+        totalSessionsCount: totalSessions,
+        examResults: stdExamResults,
+        isPaid,
+        monthName: curMonth,
+        teacherName: data.settings?.teacherName || 'مس نشوى',
+      });
+
+      setReportCardModal({
+        student: std,
+        dataUrl,
+        monthName: curMonth,
+      });
+    } catch (err) {
+      console.error('Error generating report card:', err);
+      alert('حدث خطأ أثناء توليد التقرير الشهري.');
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
   const handleUpdateStudent = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingStudent) {
@@ -176,7 +226,7 @@ export default function StudentsDirectoryPage() {
             دليل وإدارة الطلاب ({data.students.length})
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            عرض وتعديل بيانات وصور وتواريخ ميلاد طلاب الصف الأول الثانوي
+            عرض وتعديل بيانات وصور وتواريخ ميلاد وتقارير المتابعة الشهرية لطلاب الصف الأول الثانوي
           </p>
         </div>
 
@@ -325,6 +375,13 @@ export default function StudentsDirectoryPage() {
                       </td>
                       <td className="p-4 text-center space-x-1 space-x-reverse">
                         <button
+                          onClick={() => handleOpenReportCard(std)}
+                          className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 transition"
+                          title="شهادة التقرير الشهري الشامل"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                        </button>
+                        <button
                           onClick={() => setViewingStudent(std)}
                           className="p-1.5 rounded-lg bg-cyan-50 dark:bg-cyan-950/60 hover:bg-cyan-100 text-cyan-700 dark:text-cyan-300 transition"
                           title="عرض الملف والبيانات الكاملة"
@@ -419,13 +476,21 @@ export default function StudentsDirectoryPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    onClick={() => handleOpenReportCard(std)}
+                    className="py-1.5 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>التقرير الشهري</span>
+                  </button>
+
                   <button
                     onClick={() => setViewingStudent(std)}
                     className="flex-1 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold flex items-center justify-center gap-1"
                   >
                     <Eye className="w-3.5 h-3.5" />
-                    عرض الملف
+                    الملف
                   </button>
                   <button
                     onClick={() => setEditingStudent(std)}
@@ -660,10 +725,20 @@ export default function StudentsDirectoryPage() {
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-2 pt-2 border-t border-slate-200/50 dark:border-slate-800">
+            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200/50 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => handleOpenReportCard(viewingStudent)}
+                disabled={isGeneratingReport}
+                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 transition active:scale-95"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>{isGeneratingReport ? 'جاري إنشاء الشهادة...' : 'شهادة التقرير الشهري 📜'}</span>
+              </button>
+
               <Link
                 href="/dashboard/print-cards"
-                className="flex-1 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm"
+                className="px-3 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm"
               >
                 <QrCode className="w-3.5 h-3.5 text-cyan-400" />
                 <span>طباعة الكارت</span>
@@ -673,7 +748,7 @@ export default function StudentsDirectoryPage() {
                 onClick={() => {
                   setEditingStudent(viewingStudent);
                 }}
-                className="px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm"
+                className="px-3 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm"
               >
                 <Edit3 className="w-3.5 h-3.5" />
                 <span>تعديل</span>
@@ -681,7 +756,7 @@ export default function StudentsDirectoryPage() {
 
               <button
                 onClick={() => handleDelete(viewingStudent.id, viewingStudent.name)}
-                className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm"
+                className="px-3 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>حذف</span>
@@ -742,6 +817,87 @@ export default function StudentsDirectoryPage() {
                 className="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition"
               >
                 إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MONTHLY REPORT CARD MODAL */}
+      {reportCardModal && (
+        <div
+          onClick={() => setReportCardModal(null)}
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-ios-spring overflow-y-auto"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-2xl w-full bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border border-emerald-500/30 p-5 text-center space-y-4 my-8"
+          >
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="text-right">
+                <h4 className="text-sm font-black text-white flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-emerald-400" />
+                  <span>شهادة التقييم والمتابعة الشهرية ({reportCardModal.monthName})</span>
+                </h4>
+                <p className="text-[11px] text-emerald-400 font-mono">
+                  {reportCardModal.student.name} (#{reportCardModal.student.code})
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReportCardModal(null)}
+                className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="w-full rounded-2xl overflow-hidden shadow-2xl border border-emerald-500/20 bg-slate-950 flex items-center justify-center max-h-[60vh] overflow-y-auto">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={reportCardModal.dataUrl}
+                alt="Monthly Report Card"
+                className="w-full h-auto object-contain rounded-xl"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const cleanParentPhone = reportCardModal.student.parentPhone.replace(/\D/g, '').replace(/^0/, '20');
+                  const msg = `أهلاً بحضرتك أستاذ ${reportCardModal.student.parentName} 🌸\nنرسل لحضرتكم تقرير المتابعة والتقييم الشهري الخاص بـ (${reportCardModal.student.name}) لشهر (${reportCardModal.monthName}) في مادة العلوم المتكاملة مع مس نشوى 🌟\n\n📌 كود الطالب: #${reportCardModal.student.code}\n🔗 لمتابعة كارت الطالب والدرجات المحدثة: https://nashwa-academy.vercel.app/student`;
+                  window.open(`https://wa.me/${cleanParentPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+                }}
+                className="flex-1 min-w-[140px] py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition active:scale-95"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>إرسال واتساب لولي الأمر 💬</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const a = document.createElement('a');
+                  a.href = reportCardModal.dataUrl;
+                  a.download = `تقرير_${reportCardModal.student.code}_${reportCardModal.student.name.replace(/\s+/g, '_')}_${reportCardModal.monthName}.png`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                }}
+                className="py-3 px-4 rounded-2xl bg-cyan-600 hover:bg-cyan-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg transition active:scale-95"
+              >
+                <Download className="w-4 h-4" />
+                <span>تنزيل الشهادة HD 📥</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="py-3 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition"
+              >
+                <Printer className="w-4 h-4 text-cyan-300" />
+                <span>طباعة PDF 🖨️</span>
               </button>
             </div>
           </div>

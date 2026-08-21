@@ -2,20 +2,13 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { db, getCurrentMonthLabel } from '@/lib/storage';
-import { sound } from '@/lib/audio';
 import { Student, Group, AttendanceRecord, Subscription, ExamResult, Exam } from '@/types';
+import { sound } from '@/lib/audio';
 import {
-  GraduationCap,
   QrCode,
   CalendarCheck,
   CreditCard,
   Award,
-  Sparkles,
-  Search,
-  CheckCircle2,
-  AlertCircle,
-  Clock,
-  LogOut,
   Download,
   Share2,
   ChevronRight,
@@ -41,11 +34,17 @@ import {
   Calendar,
   X,
   Send,
+  Sparkles,
+  LogOut,
+  Clock,
+  MessageCircle,
+  GraduationCap,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import QRCode from 'qrcode';
 import JsBarcode from 'jsbarcode';
 import { generateStudentCardCanvas } from '@/lib/generateCardImage';
+import { generateStudentReportCardCanvas } from '@/lib/generateReportCard';
 import DateWheelPicker from '@/components/DateWheelPicker';
 import { compressStudentPhoto } from '@/lib/imageCompressor';
 import { notifyStudentProfileUpdate } from '@/lib/telegram';
@@ -60,12 +59,16 @@ export default function StudentPortalPage() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [examResults, setExamResults] = useState<{ result: ExamResult; exam: Exam }[]>([]);
 
-  const [activeTab, setActiveTab] = useState<'CARD' | 'ATTENDANCE' | 'SUBSCRIPTION' | 'EXAMS' | 'EDIT'>('CARD');
+  const [activeTab, setActiveTab] = useState<'CARD' | 'REPORT' | 'ATTENDANCE' | 'SUBSCRIPTION' | 'EXAMS' | 'EDIT'>('CARD');
   const [errorMsg, setErrorMsg] = useState('');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [cardDisplayType, setCardDisplayType] = useState<'QR' | 'BARCODE'>('QR');
   const [copiedMsg, setCopiedMsg] = useState(false);
   const [isDownloadingImage, setIsDownloadingImage] = useState(false);
+
+  // Report Card State
+  const [reportCardDataUrl, setReportCardDataUrl] = useState<string>('');
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   // Edit Profile States
   const [editFormData, setEditFormData] = useState({
@@ -98,84 +101,73 @@ export default function StudentPortalPage() {
     }
   }, []);
 
-  // Sync groups
-  useEffect(() => {
-    const d = db.getData();
-    setGroups(d.groups || []);
-  }, []);
-
-  // When currentStudent changes, update edit form data
+  // Generate QR Code & Barcode whenever student loads
   useEffect(() => {
     if (currentStudent) {
-      setEditFormData({
-        name: currentStudent.name,
-        phone: currentStudent.phone,
-        parentName: currentStudent.parentName,
-        parentPhone: currentStudent.parentPhone,
-        address: currentStudent.address || '',
-        birthDate: currentStudent.birthDate || '2009-05-15',
-        photoUrl: currentStudent.photoUrl || '',
-        groupId: currentStudent.groupId || '',
-      });
-    }
-  }, [currentStudent]);
-
-  // Generate QR & Barcode when student is active
-  useEffect(() => {
-    if (currentStudent) {
-      // High error correction Level H ensures instantaneous scanning under any lighting
       QRCode.toDataURL(currentStudent.code, {
-        width: 360,
-        margin: 2,
-        errorCorrectionLevel: 'H',
-        color: { dark: '#020617', light: '#ffffff' },
+        width: 300,
+        margin: 1,
+        color: { dark: '#042f2e', light: '#ffffff' },
       })
         .then((url) => setQrDataUrl(url))
-        .catch((err) => console.error('QR generation error', err));
+        .catch(console.error);
 
-      if (barcodeSvgRef.current) {
-        try {
-          JsBarcode(barcodeSvgRef.current, currentStudent.code, {
-            format: 'CODE128',
-            lineColor: '#020617',
-            width: 3,
-            height: 85,
-            displayValue: true,
-            fontSize: 18,
-            font: 'Cairo',
-            textMargin: 6,
-          });
-        } catch (err) {
-          console.error('Barcode generation error', err);
+      setTimeout(() => {
+        if (barcodeSvgRef.current) {
+          try {
+            JsBarcode(barcodeSvgRef.current, currentStudent.code, {
+              format: 'CODE128',
+              lineColor: '#000000',
+              width: 2.2,
+              height: 55,
+              displayValue: true,
+              fontSize: 14,
+              font: 'monospace',
+              fontOptions: 'bold',
+              background: '#ffffff',
+            });
+          } catch (e) {
+            console.error('Barcode render error:', e);
+          }
         }
-      }
+      }, 100);
     }
-  }, [currentStudent, activeTab, cardDisplayType]);
+  }, [currentStudent, cardDisplayType]);
 
-  const loadStudentData = async (code: string) => {
-    await db.syncFromSupabase();
-
+  const loadStudentData = (code: string) => {
     const data = db.getData();
-    setGroups(data.groups || []);
+    setGroups(data.groups);
     const std = data.students.find((s) => s.code === code.trim());
     if (!std) {
-      setErrorMsg('لم يتم العثور على طالب بهذا الكود في المنصة');
-      return false;
+      setErrorMsg('كود الطالب غير صحيح أو غير مسجل بالمنظومة');
+      return;
     }
 
     setCurrentStudent(std);
-    localStorage.setItem('logged_student_code', std.code);
-    setErrorMsg('');
+    const grp = data.groups.find((g) => g.id === std.groupId) || null;
+    setGroup(grp);
 
-    const grp = data.groups.find((g) => g.id === std.groupId);
-    setGroup(grp || null);
+    // Sync Edit Form Data
+    setEditFormData({
+      name: std.name,
+      phone: std.phone,
+      parentName: std.parentName,
+      parentPhone: std.parentPhone,
+      address: std.address || 'المنصورة',
+      birthDate: std.birthDate || '2009-05-15',
+      photoUrl: std.photoUrl || '',
+      groupId: std.groupId,
+    });
 
+    // Attendance
     const att = data.attendance.filter((a) => a.studentId === std.id);
-    setAttendance(att);
+    setAttendance(att.sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime()));
 
-    const subs = data.subscriptions.filter((s) => s.studentId === std.id);
-    setSubscriptions(subs);
+    // Subscriptions
+    const sub = data.subscriptions.filter((s) => s.studentId === std.id);
+    setSubscriptions(sub);
 
+    // Exam Results
     const results = data.examResults
       .filter((r) => r.studentId === std.id)
       .map((r) => {
@@ -185,57 +177,63 @@ export default function StudentPortalPage() {
       .filter(Boolean) as { result: ExamResult; exam: Exam }[];
 
     setExamResults(results);
-    return true;
   };
 
-  // Real-time reactive updates
-  useEffect(() => {
-    const unsub = db.subscribe(() => {
-      const savedCode = localStorage.getItem('logged_student_code');
-      if (savedCode) {
-        const data = db.getData();
-        setGroups(data.groups || []);
-        const std = data.students.find((s) => s.code === savedCode.trim());
-        if (std) {
-          setCurrentStudent(std);
-          const grp = data.groups.find((g) => g.id === std.groupId);
-          setGroup(grp || null);
-          const att = data.attendance.filter((a) => a.studentId === std.id);
-          setAttendance(att);
-          const subs = data.subscriptions.filter((s) => s.studentId === std.id);
-          setSubscriptions(subs);
-        }
-      }
-    });
-    return unsub;
-  }, []);
+  const handleGenerateReport = async (studentToReport?: Student) => {
+    const std = studentToReport || currentStudent;
+    if (!std) return;
+    setIsGeneratingReport(true);
+    try {
+      const curMonth = getCurrentMonthLabel();
+      const settings = db.getSettings();
+      const data = db.getData();
+      const groupSessions = data.sessions.filter((s) => s.groupId === std.groupId);
+      const totalSessions = Math.max(groupSessions.length, attendance.length, 4);
 
-  const handleLogin = async (e: React.FormEvent) => {
+      const formattedExams = examResults.map((er) => ({
+        exam: er.exam,
+        result: er.result,
+      }));
+
+      const url = await generateStudentReportCardCanvas({
+        student: std,
+        group: group,
+        attendanceCount: attendance.length,
+        totalSessionsCount: totalSessions,
+        examResults: formattedExams,
+        isPaid: isCurrentMonthPaid,
+        monthName: curMonth,
+        teacherName: settings?.teacherName || 'مس نشوى',
+      });
+      setReportCardDataUrl(url);
+    } catch (err) {
+      console.error('Error generating report:', err);
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
+  const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (!studentCode.trim()) {
       setErrorMsg('يرجى إدخال كود الطالب');
       return;
     }
 
-    await db.syncFromSupabase();
     const data = db.getData();
     const std = data.students.find((s) => s.code === studentCode.trim());
+
     if (!std) {
-      setErrorMsg('كود الطالب غير مسجل أو بانتظار اعتماد المس');
+      setErrorMsg('كود الطالب غير صحيح، تأكد من الرقم المسجل في الكارت');
       return;
     }
 
-    // Two-factor privacy check (Phone verification)
     if (phone.trim()) {
-      const cleanInput = phone.trim().replace(/\D/g, '');
-      const cleanStdPhone = std.phone.replace(/\D/g, '');
-      const cleanParentPhone = std.parentPhone.replace(/\D/g, '');
-
       const isMatch =
-        cleanStdPhone.endsWith(cleanInput) ||
-        cleanParentPhone.endsWith(cleanInput) ||
-        cleanStdPhone === cleanInput ||
-        cleanParentPhone === cleanInput;
+        std.phone.endsWith(phone.trim()) ||
+        std.parentPhone.endsWith(phone.trim()) ||
+        std.phone === phone.trim() ||
+        std.parentPhone === phone.trim();
 
       if (!isMatch) {
         setErrorMsg('رقم الهاتف غير متطابق مع بيانات هذا الطالب');
@@ -321,12 +319,9 @@ export default function StudentPortalPage() {
         confetti({ particleCount: 50, spread: 70, origin: { y: 0.6 } });
       } catch {}
 
-      setTimeout(() => {
-        setEditSuccessMsg('');
-        setActiveTab('CARD');
-      }, 2500);
+      setTimeout(() => setEditSuccessMsg(''), 5000);
     } catch (err) {
-      console.error('Error updating profile:', err);
+      console.error('Update student error:', err);
       alert('حدث خطأ أثناء حفظ التعديلات، يرجى المحاولة مرة أخرى.');
     } finally {
       setIsSavingEdit(false);
@@ -367,24 +362,6 @@ export default function StudentPortalPage() {
     }
   };
 
-  // Print & Save as PDF
-  const handleSavePdf = () => {
-    window.print();
-  };
-
-  // Copy student portal link
-  const handleShareCard = () => {
-    if (!currentStudent) return;
-    const shareText = `🎓 كارت هوية الطالب: ${currentStudent.name}\n🔑 الكود: #${currentStudent.code}\n📚 أكاديمية مس نشوى - العلوم المتكاملة`;
-    if (navigator.share) {
-      navigator.share({ title: 'كارت الطالب', text: shareText, url: window.location.href }).catch(() => {});
-    } else {
-      navigator.clipboard.writeText(shareText);
-      setCopiedMsg(true);
-      setTimeout(() => setCopiedMsg(false), 3000);
-    }
-  };
-
   const currentAcademicMonth = getCurrentMonthLabel();
   const currentMonthSub = subscriptions.find((s) => s.month === currentAcademicMonth);
   const isCurrentMonthPaid = currentMonthSub ? currentMonthSub.isPaid : false;
@@ -409,100 +386,99 @@ export default function StudentPortalPage() {
             </div>
 
             {errorMsg && (
-              <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300 text-xs font-bold flex items-center gap-2 text-right">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{errorMsg}</span>
+              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/70 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs font-bold animate-pulse">
+                ⚠️ {errorMsg}
               </div>
             )}
 
             <form onSubmit={handleLogin} className="space-y-4 text-right">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                  <QrCode className="w-3.5 h-3.5 text-brand-600 dark:text-cyan-400" />
-                  <span>كود الطالب (رقم البطاقة):</span>
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  كود الطالب (المسجل في الكارت):
                 </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="مثال: 101"
-                  value={studentCode}
-                  onChange={(e) => setStudentCode(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-black text-center text-lg focus:outline-none focus:border-brand-500 shadow-inner"
-                />
+                <div className="relative">
+                  <span className="absolute left-3 top-3 text-xs font-mono font-bold text-slate-400">#</span>
+                  <input
+                    type="text"
+                    required
+                    placeholder="مثال: 101"
+                    value={studentCode}
+                    onChange={(e) => setStudentCode(e.target.value)}
+                    className="w-full pl-8 pr-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-bold text-center text-base focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+                  />
+                </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                  <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>رقم الهاتف المسجل أو آخر 4 أرقام (للخصوصية):</span>
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  رقم الهاتف (التحقق الأمني):
                 </label>
                 <input
                   type="tel"
-                  placeholder="مثال: 01012345678 أو 5678"
+                  dir="ltr"
+                  placeholder="رقم الهاتف المسجل أو آخر 4 أرقام"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-center text-sm focus:outline-none focus:border-brand-500 shadow-inner"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-center text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
                 />
               </div>
 
               <button
                 type="submit"
-                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-brand-700 to-emerald-600 hover:from-brand-600 hover:to-emerald-500 text-white font-black text-sm shadow-lg shadow-brand-700/20 transition active:scale-95 flex items-center justify-center gap-2"
+                className="w-full py-3 rounded-2xl bg-gradient-to-r from-brand-600 to-cyan-500 hover:from-brand-500 hover:to-cyan-400 text-white font-black text-sm shadow-md shadow-brand-600/30 transition active:scale-95 flex items-center justify-center gap-2"
               >
-                <ShieldCheck className="w-4 h-4" />
-                <span>عرض كارت الطالب والدرجات 🔓</span>
+                <UserCheck className="w-4 h-4" />
+                <span>دخول وعرض بطاقة الطالب 🚀</span>
               </button>
             </form>
-
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-400 text-center">
-              <span>طالب جديد؟ </span>
-              <a href="/register" className="font-bold text-brand-600 dark:text-cyan-400 hover:underline">
-                سجل استمارة التقديم الآن 📝
-              </a>
-            </div>
           </div>
         </div>
       ) : (
-        /* 2. ACTIVE STUDENT DASHBOARD & APPLE WALLET PASS */
-        <div className="space-y-6 animate-ios-spring">
-          {/* Top Profile Header */}
-          <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-slate-200/80 dark:border-slate-800 no-print">
+        /* 2. LOGGED IN STUDENT DASHBOARD */
+        <div className="space-y-6">
+          {/* Header Profile Bar */}
+          <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3.5">
               {currentStudent.photoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={currentStudent.photoUrl}
                   alt={currentStudent.name}
-                  className="w-14 h-14 rounded-2xl object-cover border-2 border-emerald-500 shadow-md shrink-0"
+                  className="w-14 h-14 rounded-2xl object-cover border-2 border-brand-500 shadow-md"
                 />
               ) : (
-                <div className="w-14 h-14 rounded-2xl bg-brand-600 text-white flex items-center justify-center font-black text-xl shadow-md shrink-0">
-                  #{currentStudent.code}
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-700 to-emerald-600 text-white flex items-center justify-center font-bold text-xl shadow-md">
+                  {currentStudent.name.slice(0, 1)}
                 </div>
               )}
 
               <div>
                 <div className="flex items-center gap-2">
-                  <h1 className="text-lg sm:text-2xl font-black text-slate-900 dark:text-white">
+                  <h1 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
                     {currentStudent.name}
                   </h1>
-                  <span
-                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                      currentStudent.status === 'ACTIVE'
-                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-500/20'
-                        : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-500/20'
-                    }`}
-                  >
-                    {currentStudent.status === 'ACTIVE' ? 'معتمد ونشط ✅' : 'معلق ⏳'}
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-black bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-cyan-400">
+                    #{currentStudent.code}
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-semibold">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   {group ? group.name : 'العلوم المتكاملة • أولى ثانوي'}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 self-end sm:self-center">
+              <button
+                onClick={() => {
+                  setActiveTab('REPORT');
+                  handleGenerateReport();
+                }}
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>شهادتي الشهرية 📜</span>
+              </button>
+
               <button
                 onClick={() => setActiveTab('EDIT')}
                 className="px-3.5 py-2 rounded-xl bg-brand-50 dark:bg-brand-950/80 hover:bg-brand-100 text-brand-700 dark:text-cyan-300 text-xs font-bold transition flex items-center gap-1.5 border border-brand-200 dark:border-brand-900"
@@ -516,26 +492,32 @@ export default function StudentPortalPage() {
                 className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-rose-50 dark:hover:bg-rose-950 text-slate-600 dark:text-slate-300 hover:text-rose-500 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span>تبديل الحساب</span>
+                <span>خروج</span>
               </button>
             </div>
           </div>
 
           {/* Navigation Tabs (Segmented Controls) */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1.5 rounded-2xl liquid-glass border border-slate-200/80 dark:border-slate-800 no-print">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 p-1.5 rounded-2xl liquid-glass border border-slate-200/80 dark:border-slate-800 no-print">
             {[
               { id: 'CARD', label: 'كارت الهوية', icon: QrCode },
+              { id: 'REPORT', label: 'التقرير الشهري', icon: FileText },
               { id: 'ATTENDANCE', label: `الحضور (${attendance.length})`, icon: CalendarCheck },
               { id: 'EXAMS', label: `الدرجات (${examResults.length})`, icon: Award },
               { id: 'SUBSCRIPTION', label: 'الاشتراك', icon: CreditCard },
-              { id: 'EDIT', label: 'تعديل البيانات ✏️', icon: Edit3 },
+              { id: 'EDIT', label: 'تعديل البيانات', icon: Edit3 },
             ].map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
+                  onClick={() => {
+                    setActiveTab(tab.id as any);
+                    if (tab.id === 'REPORT' && !reportCardDataUrl) {
+                      handleGenerateReport();
+                    }
+                  }}
                   className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition-all active:scale-95 ${
                     isActive
                       ? 'bg-brand-600 text-white shadow-md shadow-brand-600/30'
@@ -578,270 +560,352 @@ export default function StudentPortalPage() {
                     <div>
                       <span className="text-[10px] uppercase tracking-wider text-emerald-200/80 font-bold block">اسم الطالب</span>
                       <h2 className="text-xl sm:text-2xl font-black tracking-tight">{currentStudent.name}</h2>
-                      {currentStudent.birthDate && (
-                        <p className="text-[11px] text-emerald-200 font-mono mt-0.5">📅 الميلاد: {currentStudent.birthDate}</p>
-                      )}
                     </div>
+
                     {currentStudent.photoUrl && (
-                      <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-white/40 shadow-lg shrink-0">
+                      <div className="w-14 h-14 rounded-2xl overflow-hidden border-2 border-emerald-400/80 shadow-md shrink-0">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={currentStudent.photoUrl} alt={currentStudent.name} className="w-full h-full object-cover" />
                       </div>
                     )}
                   </div>
 
-                  {/* Clear Day-by-Day Schedule Boxes */}
-                  <div className="space-y-1.5 pt-1 text-xs">
-                    <span className="text-[10px] text-emerald-200/80 font-bold block">المجموعة ومواعيد الحصص الأسبوعية:</span>
-                    <p className="font-bold text-white text-xs leading-tight">{group ? group.name : '—'}</p>
+                  <div className="grid grid-cols-2 gap-3 pt-1 border-t border-white/10 text-xs">
+                    <div>
+                      <span className="text-[10px] text-emerald-200/80 block">المجموعة</span>
+                      <span className="font-bold text-white text-xs">{group ? group.name : '—'}</span>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] text-emerald-200/80 block">اشتراك الشهر</span>
+                      <span className={`font-bold text-xs ${isCurrentMonthPaid ? 'text-emerald-300' : 'text-rose-300'}`}>
+                        {isCurrentMonthPaid ? 'مسدد ✅' : 'مستحق ⚠️'}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                {/* Scannable Code Display */}
-                <div className="bg-white rounded-3xl p-4 text-center shadow-inner text-slate-900 space-y-3 border border-white/20">
-                  <div className="flex items-center justify-between px-2 text-[11px] font-bold text-slate-500 border-b border-slate-100 pb-2">
-                    <span>امسح عند باب القاعة</span>
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => setCardDisplayType('QR')}
-                        className={`px-2 py-0.5 rounded text-[10px] ${
-                          cardDisplayType === 'QR' ? 'bg-brand-600 text-white' : 'bg-slate-100'
-                        }`}
-                      >
-                        QR
-                      </button>
-                      <button
-                        onClick={() => setCardDisplayType('BARCODE')}
-                        className={`px-2 py-0.5 rounded text-[10px] ${
-                          cardDisplayType === 'BARCODE' ? 'bg-brand-600 text-white' : 'bg-slate-100'
-                        }`}
-                      >
-                        Barcode
-                      </button>
-                    </div>
+                {/* Barcode / QR Code Switcher */}
+                <div className="bg-white rounded-2xl p-4 shadow-inner text-slate-900 text-center space-y-3">
+                  <div className="flex justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCardDisplayType('QR')}
+                      className={`px-3 py-1 rounded-lg text-[10px] font-black transition ${
+                        cardDisplayType === 'QR' ? 'bg-emerald-700 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      QR Code
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCardDisplayType('BARCODE')}
+                      className={`px-3 py-1 rounded-lg text-[10px] font-black transition ${
+                        cardDisplayType === 'BARCODE' ? 'bg-emerald-700 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      Barcode
+                    </button>
                   </div>
 
-                  {cardDisplayType === 'QR' ? (
-                    <div className="flex justify-center p-1">
-                      {qrDataUrl && (
+                  <div className="flex items-center justify-center min-h-[150px]">
+                    {cardDisplayType === 'QR' ? (
+                      qrDataUrl && (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={qrDataUrl} alt="Student QR" className="w-44 h-44 rounded-xl" />
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex justify-center overflow-hidden py-3">
+                        <img src={qrDataUrl} alt="QR Code" className="w-36 h-36 mx-auto rounded-lg" />
+                      )
+                    ) : (
                       <svg ref={barcodeSvgRef} className="max-w-full" />
-                    </div>
-                  )}
-
-                  <p className="text-[10px] text-slate-400 font-semibold">
-                    رمز الحضور السريع الذكي للسنتر
-                  </p>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-bold">أظهر هذا الباركود لكاميرا السكانر عند باب السنتر</p>
                 </div>
               </div>
 
               {/* Action Buttons */}
-              <div className="space-y-2 no-print">
+              <div className="flex gap-2">
                 <button
+                  type="button"
                   onClick={handleDownloadCardImage}
                   disabled={isDownloadingImage}
-                  className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition active:scale-95"
+                  className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition active:scale-95"
                 >
                   <Download className="w-4 h-4" />
-                  <span>{isDownloadingImage ? 'جاري إنشاء وتنزيل الصورة...' : 'حفظ الكارت كصورة في الاستوديو 📥'}</span>
+                  <span>{isDownloadingImage ? 'جاري التحميل...' : 'حفظ الكارت بالمعرض 📥'}</span>
                 </button>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={handleSavePdf}
-                    className="py-3 rounded-xl bg-slate-900 dark:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition"
-                  >
-                    <Printer className="w-4 h-4 text-cyan-300" />
-                    <span>طباعة الكارت PDF</span>
-                  </button>
-
-                  <button
-                    onClick={handleShareCard}
-                    className="py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 transition"
-                  >
-                    <Share2 className="w-4 h-4" />
-                    <span>{copiedMsg ? 'تم نسخ الرابط! ✅' : 'مشاركة الكارت'}</span>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('REPORT');
+                    handleGenerateReport();
+                  }}
+                  className="py-3 px-4 rounded-2xl bg-cyan-600 hover:bg-cyan-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md transition active:scale-95"
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>التقرير 📜</span>
+                </button>
               </div>
             </div>
           )}
 
-          {/* TAB 2: EDIT STUDENT PROFILE */}
-          {activeTab === 'EDIT' && (
-            <div className="liquid-glass rounded-3xl p-6 sm:p-8 shadow-md space-y-6 max-w-xl mx-auto animate-ios-spring">
-              <div className="flex items-center justify-between border-b border-slate-200/60 dark:border-slate-800 pb-3">
+          {/* TAB 2: Monthly Report Card Certificate View */}
+          {activeTab === 'REPORT' && (
+            <div className="liquid-glass rounded-3xl p-6 shadow-sm space-y-6 animate-ios-spring">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-200/60 dark:border-slate-800 pb-4">
                 <div>
                   <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                    <Edit3 className="w-5 h-5 text-brand-600 dark:text-cyan-400" />
-                    <span>تعديل بيانات الطالب #{currentStudent.code}</span>
+                    <Sparkles className="w-5 h-5 text-emerald-500" />
+                    <span>شهادة التقييم والمتابعة الشهرية ({currentAcademicMonth})</span>
                   </h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    يمكنك تعديل رقم الهاتف، العنوان، الصورة، وتاريخ الميلاد في أي وقت
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    تقرير معتمد وشامل يوضح نسبة حضور الحصص، درجات الامتحانات، وملاحظات المس
                   </p>
                 </div>
-                <span className="w-9 h-9 rounded-2xl bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-cyan-300 font-mono font-black text-xs flex items-center justify-center">
-                  #{currentStudent.code}
-                </span>
+
+                <button
+                  onClick={() => handleGenerateReport()}
+                  disabled={isGeneratingReport}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition active:scale-95"
+                >
+                  <RotateCw className={`w-3.5 h-3.5 ${isGeneratingReport ? 'animate-spin' : ''}`} />
+                  <span>{isGeneratingReport ? 'جاري التحديث...' : 'تحديث الشهادة 🔄'}</span>
+                </button>
+              </div>
+
+              {/* Certificate Canvas / Image Preview */}
+              {isGeneratingReport ? (
+                <div className="p-16 text-center text-slate-400 space-y-3">
+                  <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
+                  <p className="text-xs font-bold">جاري توليد وطباعة شهادة التقرير الشهري...</p>
+                </div>
+              ) : reportCardDataUrl ? (
+                <div className="space-y-4">
+                  <div className="w-full rounded-2xl overflow-hidden shadow-2xl border border-emerald-500/30 bg-slate-950 flex items-center justify-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={reportCardDataUrl}
+                      alt="Monthly Report Card"
+                      className="w-full h-auto object-contain rounded-xl max-h-[70vh]"
+                    />
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex flex-wrap items-center gap-2.5 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cleanParentPhone = currentStudent.parentPhone.replace(/\D/g, '').replace(/^0/, '20');
+                        const msg = `أهلاً بحضرتك أستاذ ${currentStudent.parentName} 🌸\nنرسل لحضرتكم تقرير المتابعة والتقييم الشهري الخاص بـ (${currentStudent.name}) لشهر (${currentAcademicMonth}) في مادة العلوم المتكاملة مع مس نشوى 🌟\n\n📌 كود الطالب: #${currentStudent.code}\n🔗 لمتابعة كارت الطالب والدرجات المحدثة: https://nashwa-academy.vercel.app/student`;
+                        window.open(`https://wa.me/${cleanParentPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+                      }}
+                      className="flex-1 min-w-[150px] py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition active:scale-95"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      <span>إرسال لولي الأمر عبر واتساب 💬</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const a = document.createElement('a');
+                        a.href = reportCardDataUrl;
+                        a.download = `تقرير_${currentStudent.code}_${currentStudent.name.replace(/\s+/g, '_')}_${currentAcademicMonth}.png`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                      }}
+                      className="py-3 px-5 rounded-2xl bg-cyan-600 hover:bg-cyan-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg transition active:scale-95"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>تنزيل الشهادة HD 📥</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      className="py-3 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition"
+                    >
+                      <Printer className="w-4 h-4 text-cyan-300" />
+                      <span>طباعة PDF 🖨️</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <button
+                    onClick={() => handleGenerateReport()}
+                    className="px-6 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-cyan-600 text-white font-black text-xs shadow-lg transition active:scale-95"
+                  >
+                    عرض وتوليد شهادة التقرير الشهري 📜
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 3: Edit Profile */}
+          {activeTab === 'EDIT' && (
+            <div className="liquid-glass rounded-3xl p-6 sm:p-8 shadow-sm space-y-6 animate-ios-spring">
+              <div className="border-b border-slate-200/60 dark:border-slate-800 pb-4">
+                <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <Edit3 className="w-5 h-5 text-brand-600 dark:text-cyan-400" />
+                  <span>تعديل وتحديث بياناتي</span>
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  يمكنك تعديل أرقام الهواتف، العنوان، وتاريخ الميلاد، وسيتم إشعار المس فوراً بالتعديل 🔔
+                </p>
               </div>
 
               {editSuccessMsg && (
-                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-2 animate-ios-spring">
-                  <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
+                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-2 animate-bounce">
+                  <Check className="w-4 h-4 shrink-0" />
                   <span>{editSuccessMsg}</span>
                 </div>
               )}
 
-              <form onSubmit={handleSaveEditProfile} className="space-y-4 text-right">
-                {/* Name */}
+              <form onSubmit={handleSaveEditProfile} className="space-y-4 text-xs">
+                {/* Full Name */}
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                    <User className="w-3.5 h-3.5 text-cyan-500" />
-                    <span>اسم الطالب ثلاثياً</span>
-                    <span className="text-rose-500">*</span>
-                  </label>
+                  <label className="font-bold text-slate-700 dark:text-slate-300">اسم الطالب ثلاثياً:</label>
                   <input
                     type="text"
-                    required
                     value={editFormData.name}
                     onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
-                    className={`w-full px-3.5 py-2.5 text-xs rounded-xl border ${
-                      editErrors.name ? 'border-rose-500 bg-rose-50/20' : 'border-slate-300 dark:border-slate-700'
-                    } bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500`}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-bold focus:outline-none focus:border-brand-500"
+                    required
                   />
-                  {editErrors.name && <p className="text-[11px] text-rose-500">{editErrors.name}</p>}
+                  {editErrors.name && <p className="text-rose-500 text-[10px] font-bold">{editErrors.name}</p>}
                 </div>
 
-                {/* Phones */}
+                {/* Phones Row */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                      <Phone className="w-3.5 h-3.5 text-emerald-500" />
-                      <span>رقم هاتف الطالب (واتساب)</span>
-                      <span className="text-rose-500">*</span>
-                    </label>
+                    <label className="font-bold text-slate-700 dark:text-slate-300">رقم هاتف الطالب (واتساب):</label>
                     <input
                       type="tel"
                       dir="ltr"
-                      required
                       value={editFormData.phone}
                       onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
-                      className="w-full px-3.5 py-2.5 text-xs font-mono rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-bold focus:outline-none focus:border-brand-500 text-center"
+                      required
                     />
-                    {editErrors.phone && <p className="text-[11px] text-rose-500">{editErrors.phone}</p>}
+                    {editErrors.phone && <p className="text-rose-500 text-[10px] font-bold">{editErrors.phone}</p>}
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                      <Phone className="w-3.5 h-3.5 text-brand-500" />
-                      <span>رقم هاتف ولي الأمر</span>
-                      <span className="text-rose-500">*</span>
-                    </label>
+                    <label className="font-bold text-slate-700 dark:text-slate-300">رقم هاتف ولي الأمر:</label>
                     <input
                       type="tel"
                       dir="ltr"
-                      required
                       value={editFormData.parentPhone}
                       onChange={(e) => setEditFormData({ ...editFormData, parentPhone: e.target.value })}
-                      className="w-full px-3.5 py-2.5 text-xs font-mono rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-bold focus:outline-none focus:border-brand-500 text-center"
+                      required
                     />
-                    {editErrors.parentPhone && <p className="text-[11px] text-rose-500">{editErrors.parentPhone}</p>}
+                    {editErrors.parentPhone && <p className="text-rose-500 text-[10px] font-bold">{editErrors.parentPhone}</p>}
                   </div>
                 </div>
 
                 {/* Parent Name & Address */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">اسم ولي الأمر</label>
+                    <label className="font-bold text-slate-700 dark:text-slate-300">اسم ولي الأمر:</label>
                     <input
                       type="text"
                       value={editFormData.parentName}
                       onChange={(e) => setEditFormData({ ...editFormData, parentName: e.target.value })}
-                      className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-bold focus:outline-none focus:border-brand-500"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-rose-500" />
-                      <span>العنوان / المنطقة</span>
-                    </label>
+                    <label className="font-bold text-slate-700 dark:text-slate-300">العنوان / المنطقة السكنية:</label>
                     <input
                       type="text"
-                      placeholder="مثال: المنصورة - حي الجامعة"
                       value={editFormData.address}
                       onChange={(e) => setEditFormData({ ...editFormData, address: e.target.value })}
-                      className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-bold focus:outline-none focus:border-brand-500"
                     />
                   </div>
                 </div>
 
-                {/* Date of Birth Wheel Picker */}
+                {/* Date Wheel Picker */}
                 <DateWheelPicker
-                  value={editFormData.birthDate}
-                  onChange={(val) => setEditFormData((prev) => ({ ...prev, birthDate: val }))}
+                  value={editFormData.birthDate || '2009-05-15'}
+                  onChange={(val) => setEditFormData({ ...editFormData, birthDate: val })}
                   label="تاريخ الميلاد"
                 />
 
-                {/* Photo Update Section with Gallery and Camera */}
-                <div className="space-y-2.5 p-4 rounded-2xl bg-white/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
-                  <label className="text-xs font-bold text-slate-800 dark:text-white flex items-center justify-between">
+                {/* Photo Upload with Gallery & Camera Options */}
+                <div className="space-y-2 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                  <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
                       <Camera className="w-4 h-4 text-cyan-500" />
-                      الصورة الشخصية (تظهر في الكارت الذكي)
+                      <span>الصورة الشخصية للكارت:</span>
                     </span>
                     {editFormData.photoUrl && (
                       <button
                         type="button"
-                        onClick={() => setEditFormData((prev) => ({ ...prev, photoUrl: '' }))}
-                        className="text-[10px] text-rose-500 font-bold"
+                        onClick={() => setEditFormData({ ...editFormData, photoUrl: '' })}
+                        className="text-[10px] text-rose-500 font-bold hover:underline"
                       >
-                        إزالة الصورة ❌
+                        إزالة الصورة 🗑️
                       </button>
                     )}
                   </label>
 
                   {editFormData.photoUrl ? (
-                    <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center gap-3">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={editFormData.photoUrl}
                         alt="Preview"
-                        className="w-14 h-14 rounded-2xl object-cover border-2 border-emerald-500 shadow-sm"
+                        className="w-16 h-16 rounded-2xl object-cover border-2 border-emerald-500 shadow-md"
                       />
-                      <div className="flex-1 space-y-1">
-                        <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">تم اختيار الصورة بنجاح ✅</p>
-                        <p className="text-[10px] text-slate-400">يمكنك تغييرها باختيار صورة جديدة من الأزرار أدناه</p>
+                      <div className="space-y-1">
+                        <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold block">
+                          تم تجهيز الصورة بنجاح ✅
+                        </span>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => editGalleryInputRef.current?.click()}
+                            className="px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 text-[10px] font-bold text-slate-800 dark:text-white"
+                          >
+                            تغيير من المعرض 🖼️
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => editCameraInputRef.current?.click()}
+                            className="px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 text-[10px] font-bold text-slate-800 dark:text-white"
+                          >
+                            التقاط سيلفي 📸
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => editGalleryInputRef.current?.click()}
+                        className="p-3 rounded-xl border border-dashed border-cyan-400/60 dark:border-cyan-700 hover:bg-cyan-50 dark:hover:bg-cyan-950/40 text-cyan-800 dark:text-cyan-300 font-bold text-xs flex flex-col items-center justify-center gap-1 transition"
+                      >
+                        <ImageIcon className="w-5 h-5 text-cyan-500" />
+                        <span>اختيار من المعرض 🖼️</span>
+                      </button>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => editGalleryInputRef.current?.click()}
-                      disabled={isProcessingPhoto}
-                      className="py-2.5 px-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-800/70 hover:bg-brand-50 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95"
-                    >
-                      <ImageIcon className="w-4 h-4 text-brand-600 dark:text-cyan-400" />
-                      <span>اختيار من المعرض 🖼️</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => editCameraInputRef.current?.click()}
-                      disabled={isProcessingPhoto}
-                      className="py-2.5 px-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-800/70 hover:bg-emerald-50 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95"
-                    >
-                      <Camera className="w-4 h-4 text-emerald-500" />
-                      <span>سيلفي بالكاميرا 📸</span>
-                    </button>
-                  </div>
+                      <button
+                        type="button"
+                        onClick={() => editCameraInputRef.current?.click()}
+                        className="p-3 rounded-xl border border-dashed border-emerald-400/60 dark:border-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 font-bold text-xs flex flex-col items-center justify-center gap-1 transition"
+                      >
+                        <Camera className="w-5 h-5 text-emerald-500" />
+                        <span>التقاط سيلفي 📸</span>
+                      </button>
+                    </div>
+                  )}
 
                   <input
                     ref={editGalleryInputRef}
@@ -860,49 +924,22 @@ export default function StudentPortalPage() {
                   />
                 </div>
 
-                {/* Group Selection */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-cyan-500" />
-                    <span>المجموعة وموعد الحصة</span>
-                  </label>
-                  <select
-                    value={editFormData.groupId}
-                    onChange={(e) => setEditFormData({ ...editFormData, groupId: e.target.value })}
-                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
-                  >
-                    {groups.map((grp) => (
-                      <option key={grp.id} value={grp.id}>
-                        {grp.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Submit & Cancel */}
-                <div className="pt-3 flex gap-2">
+                {/* Submit button */}
+                <div className="pt-3">
                   <button
                     type="submit"
                     disabled={isSavingEdit}
-                    className="flex-1 py-3.5 rounded-2xl bg-gradient-to-r from-brand-600 to-emerald-600 hover:from-brand-500 hover:to-emerald-500 text-white font-black text-xs shadow-lg shadow-brand-600/20 transition active:scale-95 flex items-center justify-center gap-2"
+                    className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-brand-600 via-cyan-500 to-emerald-500 hover:from-brand-500 hover:to-emerald-400 text-white font-black text-xs shadow-lg shadow-brand-600/25 active:scale-95 transition flex items-center justify-center gap-2"
                   >
                     <Send className="w-4 h-4" />
-                    <span>{isSavingEdit ? 'جاري حفظ وإرسال التعديل...' : 'حفظ وتحديث البيانات فوراً 🚀'}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('CARD')}
-                    className="px-5 py-3.5 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs"
-                  >
-                    إلغاء
+                    <span>{isSavingEdit ? 'جاري الحفظ وإرسال الإشعار...' : 'حفظ وتحديث البيانات فوراً 🚀'}</span>
                   </button>
                 </div>
               </form>
             </div>
           )}
 
-          {/* TAB 3: Attendance History */}
+          {/* TAB 4: Attendance History */}
           {activeTab === 'ATTENDANCE' && (
             <div className="liquid-glass rounded-3xl p-6 shadow-xs space-y-4">
               <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -938,7 +975,7 @@ export default function StudentPortalPage() {
             </div>
           )}
 
-          {/* TAB 4: Exam Results */}
+          {/* TAB 5: Exam Results */}
           {activeTab === 'EXAMS' && (
             <div className="liquid-glass rounded-3xl p-6 shadow-xs space-y-4">
               <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -980,7 +1017,7 @@ export default function StudentPortalPage() {
             </div>
           )}
 
-          {/* TAB 5: Subscriptions */}
+          {/* TAB 6: Subscriptions */}
           {activeTab === 'SUBSCRIPTION' && (
             <div className="liquid-glass rounded-3xl p-6 shadow-xs space-y-4">
               <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
