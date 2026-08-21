@@ -3,6 +3,19 @@ import { supabase, isSupabaseConfigured } from './supabase';
 import { validateBackupFile } from './validation';
 
 const STORAGE_KEY = 'nashwa_academy_db_live_v1';
+const OFFLINE_QUEUE_KEY = 'nashwa_offline_sync_queue_v1';
+
+export interface OfflineSyncItem {
+  id: string;
+  table: string;
+  action: 'INSERT' | 'UPSERT' | 'UPDATE' | 'DELETE';
+  payload: any;
+  onConflict?: string;
+  matchKey?: string;
+  matchVal?: any;
+  createdAt: string;
+  retryCount: number;
+}
 
 // Helper to get current Arabic academic month dynamically
 export function getCurrentMonthLabel(): string {
@@ -175,27 +188,150 @@ function dbToSubscription(row: any): Subscription {
 class StorageService {
   private listeners: Set<() => void> = new Set();
   private isSupabaseSyncing: boolean = false;
+  private isFlushingQueue: boolean = false;
   private realtimeChannel: any = null;
 
   constructor() {
     if (typeof window !== 'undefined') {
       this.initRealtimeChannel();
       this.syncFromSupabase();
+      this.flushOfflineQueue();
 
       window.addEventListener('focus', () => {
         this.syncFromSupabase();
+        this.flushOfflineQueue();
       });
+
+      window.addEventListener('online', () => {
+        console.log('🌐 Network online detected! Flushing offline queue...');
+        this.flushOfflineQueue();
+        this.syncFromSupabase();
+      });
+
+      // Background flush interval every 25 seconds
+      setInterval(() => {
+        if (this.isOnline() && this.getPendingSyncCount() > 0) {
+          this.flushOfflineQueue();
+        }
+      }, 25000);
     }
   }
 
-  private isClient(): boolean {
+  public isClient(): boolean {
     return typeof window !== 'undefined';
+  }
+
+  public isOnline(): boolean {
+    if (typeof navigator === 'undefined') return true;
+    return navigator.onLine;
+  }
+
+  // --- Offline Sync Queue System ---
+  public getOfflineQueue(): OfflineSyncItem[] {
+    if (!this.isClient()) return [];
+    try {
+      const raw = localStorage.getItem(OFFLINE_QUEUE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  public enqueueOfflineSync(item: {
+    table: string;
+    action: 'INSERT' | 'UPSERT' | 'UPDATE' | 'DELETE';
+    payload: any;
+    onConflict?: string;
+    matchKey?: string;
+    matchVal?: any;
+  }) {
+    if (!this.isClient()) return;
+    try {
+      const queue = this.getOfflineQueue();
+      const newItem: OfflineSyncItem = {
+        id: generateSecureId('sync'),
+        table: item.table,
+        action: item.action,
+        payload: item.payload,
+        onConflict: item.onConflict,
+        matchKey: item.matchKey,
+        matchVal: item.matchVal,
+        createdAt: new Date().toISOString(),
+        retryCount: 0,
+      };
+      queue.push(newItem);
+      localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+      this.notifyListeners();
+    } catch (err) {
+      console.warn('Error enqueuing offline sync:', err);
+    }
+  }
+
+  public getPendingSyncCount(): number {
+    return this.getOfflineQueue().length;
+  }
+
+  public async flushOfflineQueue(): Promise<{ syncedCount: number; failedCount: number; remainingCount: number }> {
+    if (!supabase || !this.isOnline() || this.isFlushingQueue) {
+      return { syncedCount: 0, failedCount: 0, remainingCount: this.getPendingSyncCount() };
+    }
+
+    const queue = this.getOfflineQueue();
+    if (queue.length === 0) {
+      return { syncedCount: 0, failedCount: 0, remainingCount: 0 };
+    }
+
+    this.isFlushingQueue = true;
+    const failedItems: OfflineSyncItem[] = [];
+    let syncedCount = 0;
+
+    try {
+      for (const item of queue) {
+        try {
+          let res: any;
+          if (item.action === 'INSERT') {
+            res = await supabase.from(item.table).insert(item.payload);
+          } else if (item.action === 'UPSERT') {
+            res = await supabase.from(item.table).upsert(item.payload, item.onConflict ? { onConflict: item.onConflict } : undefined);
+          } else if (item.action === 'UPDATE' && item.matchKey && item.matchVal) {
+            res = await supabase.from(item.table).update(item.payload).eq(item.matchKey, item.matchVal);
+          } else if (item.action === 'DELETE' && item.matchKey && item.matchVal) {
+            res = await supabase.from(item.table).delete().eq(item.matchKey, item.matchVal);
+          }
+
+          if (res?.error) {
+            console.warn(`Sync item ${item.id} error:`, res.error);
+            item.retryCount = (item.retryCount || 0) + 1;
+            if (item.retryCount < 5) failedItems.push(item);
+          } else {
+            syncedCount++;
+          }
+        } catch (err) {
+          console.warn(`Sync exception on ${item.id}:`, err);
+          item.retryCount = (item.retryCount || 0) + 1;
+          if (item.retryCount < 5) failedItems.push(item);
+        }
+      }
+
+      if (this.isClient()) {
+        localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(failedItems));
+        this.notifyListeners();
+      }
+    } finally {
+      this.isFlushingQueue = false;
+    }
+
+    return {
+      syncedCount,
+      failedCount: failedItems.length,
+      remainingCount: failedItems.length,
+    };
   }
 
   private initRealtimeChannel() {
     if (!supabase || this.realtimeChannel) return;
     try {
-      this.realtimeChannel = supabase.channel('kiosk_live_sync_v4', {
+      this.realtimeChannel = supabase.channel('kiosk_live_sync_v5', {
         config: { broadcast: { ack: true } },
       });
       this.realtimeChannel.subscribe((status: string) => {
@@ -208,7 +344,7 @@ class StorageService {
 
   // Sync latest cloud data from Supabase
   public async syncFromSupabase() {
-    if (!supabase || this.isSupabaseSyncing) return;
+    if (!supabase || this.isSupabaseSyncing || !this.isOnline()) return;
     this.isSupabaseSyncing = true;
     try {
       const [
@@ -389,7 +525,7 @@ class StorageService {
     type: 'SCAN_RESULT' | 'ATTENDANCE_UPDATE' | 'PAYMENT_COLLECTED';
     payload: any;
   }) {
-    if (supabase) {
+    if (supabase && this.isOnline()) {
       try {
         this.initRealtimeChannel();
         if (this.realtimeChannel) {
@@ -406,7 +542,7 @@ class StorageService {
 
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
-        const bc = new BroadcastChannel('nashwa_kiosk_sync_bus_v4');
+        const bc = new BroadcastChannel('nashwa_kiosk_sync_bus_v5');
         bc.postMessage(event);
       } catch {}
     }
@@ -430,7 +566,7 @@ class StorageService {
 
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
-        broadcastChannel = new BroadcastChannel('nashwa_kiosk_sync_bus_v4');
+        broadcastChannel = new BroadcastChannel('nashwa_kiosk_sync_bus_v5');
         broadcastChannel.onmessage = (msg) => {
           if (msg.data) {
             callback(msg.data);
@@ -446,11 +582,10 @@ class StorageService {
     };
   }
 
-  // --- Attendance Scanner Core Logic ---
+  // --- Attendance Scanner Core Logic with Offline Buffer ---
   public scanAttendance(params: {
     scannedCode: string;
     activeGroupId: string;
-    activeSessionId?: string;
     deviceId?: string;
     allowMakeup?: boolean;
   }): {
@@ -463,14 +598,14 @@ class StorageService {
     originalGroupId?: string;
   } {
     const data = this.getData();
-    const code = params.scannedCode.trim();
+    const cleanCode = params.scannedCode.trim();
 
+    // 1. Find Student by Code or ID
     const student = data.students.find(
-      (s) => s.code === code || s.id === code || s.phone === code
+      (s) => s.code.toLowerCase() === cleanCode.toLowerCase() || s.id === cleanCode
     );
 
     if (!student) {
-      this.syncFromSupabase();
       return { success: false, type: 'NOT_FOUND' };
     }
 
@@ -478,25 +613,31 @@ class StorageService {
       return { success: false, type: 'INACTIVE', student };
     }
 
-    let sessionId = params.activeSessionId;
     const todayStr = new Date().toISOString().split('T')[0];
-    if (!sessionId) {
-      let session = data.sessions.find((s) => s.groupId === params.activeGroupId && s.date === todayStr);
-      if (!session) {
-        session = {
-          id: `sess-${params.activeGroupId}-${todayStr}`,
-          groupId: params.activeGroupId,
-          title: `حصة ${todayStr}`,
-          date: todayStr,
-          time: '00:00',
-        };
-        data.sessions.push(session);
-      }
-      sessionId = session.id;
+    const currentMonth = getCurrentMonthLabel();
+
+    // Find or create Session
+    let session = data.sessions.find(
+      (s) => s.groupId === params.activeGroupId && s.date === todayStr
+    );
+
+    let sessionId = session ? session.id : `sess-${params.activeGroupId}-${todayStr}`;
+
+    if (!session) {
+      session = {
+        id: sessionId,
+        groupId: params.activeGroupId,
+        title: `حصة ${todayStr}`,
+        date: todayStr,
+        time: '00:00',
+      };
+      data.sessions.push(session);
     }
 
-    const currentMonth = getCurrentMonthLabel();
-    const sub = data.subscriptions.find((s) => s.studentId === student.id && s.month === currentMonth);
+    // Check monthly subscription status
+    const sub = data.subscriptions.find(
+      (s) => s.studentId === student.id && s.month === currentMonth
+    );
     const isPaid = sub ? sub.isPaid : false;
 
     // Check duplicate
@@ -528,7 +669,7 @@ class StorageService {
       };
     }
 
-    // Record attendance
+    // Record attendance locally immediately
     const newRecord: AttendanceRecord = {
       id: generateSecureId(`att-${sessionId}-${student.id}`),
       sessionId: sessionId,
@@ -543,18 +684,43 @@ class StorageService {
     data.attendance.push(newRecord);
     this.saveData(data);
 
-    // Save to Supabase Cloud
-    if (supabase) {
+    // Save to Supabase Cloud or enqueue to offline buffer
+    const sessionPayload = {
+      id: sessionId,
+      group_id: params.activeGroupId,
+      title: `حصة ${todayStr}`,
+      date: todayStr,
+      time: '00:00',
+    };
+    const attPayload = attendanceToDb(newRecord);
+
+    if (supabase && this.isOnline()) {
       const client = supabase;
-      client.from('sessions').upsert({
-        id: sessionId,
-        group_id: params.activeGroupId,
-        title: `حصة ${todayStr}`,
-        date: todayStr,
-        time: '00:00',
-      }, { onConflict: 'id' }).then(() => {
-        client.from('attendance').insert(attendanceToDb(newRecord)).then(() => {});
-      });
+      client
+        .from('sessions')
+        .upsert(sessionPayload, { onConflict: 'id' })
+        .then(
+          () => {
+            client
+              .from('attendance')
+              .insert(attPayload)
+              .then(
+                () => {},
+                (err) => {
+                  console.warn('Attendance direct sync failed, enqueuing:', err);
+                  this.enqueueOfflineSync({ table: 'attendance', action: 'INSERT', payload: attPayload });
+                }
+              );
+          },
+          (err) => {
+            console.warn('Session direct sync failed, enqueuing:', err);
+            this.enqueueOfflineSync({ table: 'sessions', action: 'UPSERT', payload: sessionPayload, onConflict: 'id' });
+            this.enqueueOfflineSync({ table: 'attendance', action: 'INSERT', payload: attPayload });
+          }
+        );
+    } else {
+      this.enqueueOfflineSync({ table: 'sessions', action: 'UPSERT', payload: sessionPayload, onConflict: 'id' });
+      this.enqueueOfflineSync({ table: 'attendance', action: 'INSERT', payload: attPayload });
     }
 
     return {
@@ -589,8 +755,13 @@ class StorageService {
       data.subscriptions.push(newSub);
       this.saveData(data);
 
-      if (supabase) {
-        supabase.from('subscriptions').insert(subscriptionToDb(newSub)).then(() => {});
+      const dbSub = subscriptionToDb(newSub);
+      if (supabase && this.isOnline()) {
+        supabase.from('subscriptions').insert(dbSub).then(() => {}, (err) => {
+          this.enqueueOfflineSync({ table: 'subscriptions', action: 'INSERT', payload: dbSub });
+        });
+      } else {
+        this.enqueueOfflineSync({ table: 'subscriptions', action: 'INSERT', payload: dbSub });
       }
       return newSub;
     }
@@ -606,8 +777,13 @@ class StorageService {
     data.subscriptions[subIndex] = updated;
     this.saveData(data);
 
-    if (supabase) {
-      supabase.from('subscriptions').upsert(subscriptionToDb(updated), { onConflict: 'id' }).then(() => {});
+    const dbSub = subscriptionToDb(updated);
+    if (supabase && this.isOnline()) {
+      supabase.from('subscriptions').upsert(dbSub, { onConflict: 'id' }).then(() => {}, (err) => {
+        this.enqueueOfflineSync({ table: 'subscriptions', action: 'UPSERT', payload: dbSub, onConflict: 'id' });
+      });
+    } else {
+      this.enqueueOfflineSync({ table: 'subscriptions', action: 'UPSERT', payload: dbSub, onConflict: 'id' });
     }
 
     return updated;
@@ -623,15 +799,21 @@ class StorageService {
     data.groups.push(newGroup);
     this.saveData(data);
 
-    if (supabase) {
-      supabase.from('groups').insert({
-        id: newGroup.id,
-        name: newGroup.name,
-        time: newGroup.time,
-        days: newGroup.days,
-        academic_year: newGroup.academicYear,
-        max_students: newGroup.maxStudents,
-      }).then(() => {});
+    const payload = {
+      id: newGroup.id,
+      name: newGroup.name,
+      time: newGroup.time,
+      days: newGroup.days,
+      academic_year: newGroup.academicYear,
+      max_students: newGroup.maxStudents,
+    };
+
+    if (supabase && this.isOnline()) {
+      supabase.from('groups').insert(payload).then(() => {}, (err) => {
+        this.enqueueOfflineSync({ table: 'groups', action: 'INSERT', payload });
+      });
+    } else {
+      this.enqueueOfflineSync({ table: 'groups', action: 'INSERT', payload });
     }
     return newGroup;
   }
@@ -644,14 +826,20 @@ class StorageService {
     data.groups[index] = { ...data.groups[index], ...groupData };
     this.saveData(data);
 
-    if (supabase) {
-      supabase.from('groups').update({
-        name: data.groups[index].name,
-        time: data.groups[index].time,
-        days: data.groups[index].days,
-        academic_year: data.groups[index].academicYear,
-        max_students: data.groups[index].maxStudents,
-      }).eq('id', id).then(() => {});
+    const payload = {
+      name: data.groups[index].name,
+      time: data.groups[index].time,
+      days: data.groups[index].days,
+      academic_year: data.groups[index].academicYear,
+      max_students: data.groups[index].maxStudents,
+    };
+
+    if (supabase && this.isOnline()) {
+      supabase.from('groups').update(payload).eq('id', id).then(() => {}, (err) => {
+        this.enqueueOfflineSync({ table: 'groups', action: 'UPDATE', payload, matchKey: 'id', matchVal: id });
+      });
+    } else {
+      this.enqueueOfflineSync({ table: 'groups', action: 'UPDATE', payload, matchKey: 'id', matchVal: id });
     }
     return data.groups[index];
   }
@@ -660,8 +848,13 @@ class StorageService {
     const data = this.getData();
     data.groups = data.groups.filter((g) => g.id !== id);
     this.saveData(data);
-    if (supabase) {
-      supabase.from('groups').delete().eq('id', id).then(() => {});
+
+    if (supabase && this.isOnline()) {
+      supabase.from('groups').delete().eq('id', id).then(() => {}, (err) => {
+        this.enqueueOfflineSync({ table: 'groups', action: 'DELETE', payload: {}, matchKey: 'id', matchVal: id });
+      });
+    } else {
+      this.enqueueOfflineSync({ table: 'groups', action: 'DELETE', payload: {}, matchKey: 'id', matchVal: id });
     }
     return true;
   }
@@ -683,7 +876,7 @@ class StorageService {
     const data = this.getData();
     let nextCode = '101';
 
-    if (supabase) {
+    if (supabase && this.isOnline()) {
       try {
         const { data: seqCode, error } = await supabase.rpc('get_next_student_code');
         if (!error && seqCode) {
@@ -734,8 +927,13 @@ class StorageService {
     data.students.push(newStudent);
     this.saveData(data);
 
-    if (supabase) {
-      supabase.from('students').insert(studentToDb(newStudent)).then(() => {});
+    const payload = studentToDb(newStudent);
+    if (supabase && this.isOnline()) {
+      supabase.from('students').insert(payload).then(() => {}, (err) => {
+        this.enqueueOfflineSync({ table: 'students', action: 'INSERT', payload });
+      });
+    } else {
+      this.enqueueOfflineSync({ table: 'students', action: 'INSERT', payload });
     }
     return newStudent;
   }
@@ -748,58 +946,56 @@ class StorageService {
     data.students[index] = { ...data.students[index], ...studentData };
     this.saveData(data);
 
-    if (supabase) {
-      supabase.from('students').update(studentToDb(data.students[index])).eq('id', id).then(() => {});
+    const payload = studentToDb(data.students[index]);
+    if (supabase && this.isOnline()) {
+      supabase.from('students').update(payload).eq('id', id).then(() => {}, (err) => {
+        this.enqueueOfflineSync({ table: 'students', action: 'UPDATE', payload, matchKey: 'id', matchVal: id });
+      });
+    } else {
+      this.enqueueOfflineSync({ table: 'students', action: 'UPDATE', payload, matchKey: 'id', matchVal: id });
     }
     return data.students[index];
   }
 
-  public approveStudent(id: string): Student | null {
-    const data = this.getData();
-    const index = data.students.findIndex((s) => s.id === id);
-    if (index === -1) return null;
-
-    data.students[index].status = 'ACTIVE';
-    this.saveData(data);
-
-    if (supabase) {
-      supabase.from('students').update({ status: 'ACTIVE' }).eq('id', id).then(() => {});
-    }
-    return data.students[index];
+  public approveStudent(id: string): boolean {
+    const res = this.updateStudent(id, { status: 'ACTIVE' });
+    return res !== null;
   }
 
-  public deleteStudent(id: string): boolean {
+  public rejectStudent(id: string): boolean {
     const data = this.getData();
     data.students = data.students.filter((s) => s.id !== id);
-    data.attendance = data.attendance.filter((a) => a.studentId !== id);
-    data.subscriptions = data.subscriptions.filter((s) => s.studentId !== id);
-    data.examResults = data.examResults.filter((r) => r.studentId !== id);
     this.saveData(data);
-    if (supabase) {
-      supabase.from('exam_results').delete().eq('student_id', id).then(() => {});
-      supabase.from('subscriptions').delete().eq('student_id', id).then(() => {});
-      supabase.from('attendance').delete().eq('student_id', id).then(() => {});
-      supabase.from('students').delete().eq('id', id).then(() => {});
+
+    if (supabase && this.isOnline()) {
+      supabase.from('students').delete().eq('id', id).then(() => {}, (err) => {
+        this.enqueueOfflineSync({ table: 'students', action: 'DELETE', payload: {}, matchKey: 'id', matchVal: id });
+      });
+    } else {
+      this.enqueueOfflineSync({ table: 'students', action: 'DELETE', payload: {}, matchKey: 'id', matchVal: id });
     }
     return true;
   }
 
-  public rejectStudent(id: string): boolean {
-    return this.deleteStudent(id);
-  }
-
-  public markNotified(resultId: string, type: 'parent' | 'student'): void {
+  public markExamNotificationSent(resultId: string, type: 'student' | 'parent'): void {
     const data = this.getData();
     const index = data.examResults.findIndex((r) => r.id === resultId);
     if (index === -1) return;
 
-    if (type === 'parent') data.examResults[index].parentNotified = true;
-    if (type === 'student') data.examResults[index].studentNotified = true;
+    if (type === 'parent') {
+      data.examResults[index].parentNotified = true;
+    } else {
+      data.examResults[index].studentNotified = true;
+    }
     this.saveData(data);
 
-    if (supabase) {
-      const updateData = type === 'parent' ? { parent_notified: true } : { student_notified: true };
-      supabase.from('exam_results').update(updateData).eq('id', resultId).then(() => {});
+    const updateData = type === 'parent' ? { parent_notified: true } : { student_notified: true };
+    if (supabase && this.isOnline()) {
+      supabase.from('exam_results').update(updateData).eq('id', resultId).then(() => {}, (err) => {
+        this.enqueueOfflineSync({ table: 'exam_results', action: 'UPDATE', payload: updateData, matchKey: 'id', matchVal: resultId });
+      });
+    } else {
+      this.enqueueOfflineSync({ table: 'exam_results', action: 'UPDATE', payload: updateData, matchKey: 'id', matchVal: resultId });
     }
   }
 
@@ -816,16 +1012,22 @@ class StorageService {
     data.exams.push(newExam);
     this.saveData(data);
 
-    if (supabase) {
-      supabase.from('exams').insert({
-        id: newExam.id,
-        title: newExam.title,
-        date: newExam.date,
-        max_score: total,
-        total_score: total,
-        academic_year: newExam.academicYear,
-        group_id: newExam.groupId,
-      }).then(() => {});
+    const payload = {
+      id: newExam.id,
+      title: newExam.title,
+      date: newExam.date,
+      max_score: total,
+      total_score: total,
+      academic_year: newExam.academicYear,
+      group_id: newExam.groupId,
+    };
+
+    if (supabase && this.isOnline()) {
+      supabase.from('exams').insert(payload).then(() => {}, (err) => {
+        this.enqueueOfflineSync({ table: 'exams', action: 'INSERT', payload });
+      });
+    } else {
+      this.enqueueOfflineSync({ table: 'exams', action: 'INSERT', payload });
     }
     return newExam;
   }
@@ -843,17 +1045,24 @@ class StorageService {
         gradedAt: new Date().toISOString(),
       };
       this.saveData(data);
-      if (supabase) {
-        supabase.from('exam_results').upsert({
-          id: data.examResults[index].id,
-          exam_id: resultData.examId,
-          student_id: resultData.studentId,
-          score: resultData.score,
-          feedback: resultData.feedback,
-          parent_notified: resultData.parentNotified,
-          student_notified: resultData.studentNotified,
-          graded_at: data.examResults[index].gradedAt,
-        }, { onConflict: 'exam_id,student_id' }).then(() => {});
+
+      const payload = {
+        id: data.examResults[index].id,
+        exam_id: resultData.examId,
+        student_id: resultData.studentId,
+        score: resultData.score,
+        feedback: resultData.feedback,
+        parent_notified: resultData.parentNotified,
+        student_notified: resultData.studentNotified,
+        graded_at: data.examResults[index].gradedAt,
+      };
+
+      if (supabase && this.isOnline()) {
+        supabase.from('exam_results').upsert(payload, { onConflict: 'exam_id,student_id' }).then(() => {}, (err) => {
+          this.enqueueOfflineSync({ table: 'exam_results', action: 'UPSERT', payload, onConflict: 'exam_id,student_id' });
+        });
+      } else {
+        this.enqueueOfflineSync({ table: 'exam_results', action: 'UPSERT', payload, onConflict: 'exam_id,student_id' });
       }
       return data.examResults[index];
     }
@@ -866,17 +1075,23 @@ class StorageService {
     data.examResults.push(newResult);
     this.saveData(data);
 
-    if (supabase) {
-      supabase.from('exam_results').insert({
-        id: newResult.id,
-        exam_id: newResult.examId,
-        student_id: newResult.studentId,
-        score: newResult.score,
-        feedback: newResult.feedback,
-        parent_notified: newResult.parentNotified,
-        student_notified: newResult.studentNotified,
-        graded_at: newResult.gradedAt,
-      }).then(() => {});
+    const payload = {
+      id: newResult.id,
+      exam_id: newResult.examId,
+      student_id: newResult.studentId,
+      score: newResult.score,
+      feedback: newResult.feedback,
+      parent_notified: newResult.parentNotified,
+      student_notified: newResult.studentNotified,
+      graded_at: newResult.gradedAt,
+    };
+
+    if (supabase && this.isOnline()) {
+      supabase.from('exam_results').insert(payload).then(() => {}, (err) => {
+        this.enqueueOfflineSync({ table: 'exam_results', action: 'INSERT', payload });
+      });
+    } else {
+      this.enqueueOfflineSync({ table: 'exam_results', action: 'INSERT', payload });
     }
     return newResult;
   }
@@ -896,18 +1111,24 @@ class StorageService {
     };
     this.saveData(data, false);
 
-    if (supabase) {
-      supabase.from('system_settings').upsert({
-        id: 'main_settings',
-        teacher_name: data.settings.teacherName,
-        subject_name: data.settings.subjectName,
-        academic_year_label: data.settings.academicYearLabel,
-        subscription_price: data.settings.subscriptionPrice,
-        admin_passcode: data.settings.adminPasscode,
-        assistant_phone: data.settings.assistantPhone,
-        center_location: data.settings.centerLocation,
-        require_student_photo: Boolean(data.settings.requireStudentPhoto),
-      }, { onConflict: 'id' }).then(() => {}, (err: any) => console.warn('Supabase settings sync error:', err));
+    const payload = {
+      id: 'main_settings',
+      teacher_name: data.settings.teacherName,
+      subject_name: data.settings.subjectName,
+      academic_year_label: data.settings.academicYearLabel,
+      subscription_price: data.settings.subscriptionPrice,
+      admin_passcode: data.settings.adminPasscode,
+      assistant_phone: data.settings.assistantPhone,
+      center_location: data.settings.centerLocation,
+      require_student_photo: Boolean(data.settings.requireStudentPhoto),
+    };
+
+    if (supabase && this.isOnline()) {
+      supabase.from('system_settings').upsert(payload, { onConflict: 'id' }).then(() => {}, (err) => {
+        this.enqueueOfflineSync({ table: 'system_settings', action: 'UPSERT', payload, onConflict: 'id' });
+      });
+    } else {
+      this.enqueueOfflineSync({ table: 'system_settings', action: 'UPSERT', payload, onConflict: 'id' });
     }
     return data.settings;
   }
@@ -919,7 +1140,7 @@ class StorageService {
     if (session) {
       data.attendance = data.attendance.filter((a) => a.sessionId !== session.id);
       this.saveData(data);
-      if (supabase) {
+      if (supabase && this.isOnline()) {
         supabase.from('attendance').delete().eq('session_id', session.id).then(() => {});
       }
     }
@@ -928,15 +1149,18 @@ class StorageService {
   // --- Backup & Recovery ---
   public exportBackup(): string {
     const data = this.getData();
-    data.lastBackupDate = new Date().toISOString();
-    this.saveData(data, false);
-    return JSON.stringify(data, null, 2);
+    const backupObj = {
+      version: '1.0.0',
+      exportedAt: new Date().toISOString(),
+      source: 'nashwa-science-academy',
+      data: data,
+    };
+    return JSON.stringify(backupObj, null, 2);
   }
 
   public importBackup(jsonString: string): boolean {
     try {
-      const parsed = JSON.parse(jsonString);
-      const validation = validateBackupFile(parsed);
+      const validation = validateBackupFile(jsonString);
       if (validation.success && validation.data) {
         const validatedData = validation.data as SystemData;
         this.saveData(validatedData, false);
@@ -953,6 +1177,7 @@ class StorageService {
   }
 
   public async clearAllData(): Promise<void> {
+    const currentSettings = this.getSettings();
     const cleanData: SystemData = {
       groups: INITIAL_GROUPS,
       students: [],
@@ -961,10 +1186,11 @@ class StorageService {
       subscriptions: [],
       exams: [],
       examResults: [],
-      settings: DEFAULT_SETTINGS,
+      settings: currentSettings,
     };
     if (this.isClient()) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanData));
+      localStorage.removeItem(OFFLINE_QUEUE_KEY);
       localStorage.removeItem('logged_student_code');
       localStorage.removeItem('logged_student_phone');
     }

@@ -28,7 +28,11 @@ import {
   Smartphone,
   Eye,
   CheckCheck,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Wifi,
+  WifiOff,
+  Cloud,
+  CloudOff
 } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import confetti from 'canvas-confetti';
@@ -75,6 +79,12 @@ export default function ScannerPage() {
   const [sessionToast, setSessionToast] = useState<string>('');
   const [liveSyncPulse, setLiveSyncPulse] = useState(false);
   const [hardwareScanToast, setHardwareScanToast] = useState(false);
+
+  // Offline Buffer & Cloud Sync States
+  const [isOnline, setIsOnline] = useState<boolean>(true);
+  const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
+  const [isSyncingOfflineQueue, setIsSyncingOfflineQueue] = useState<boolean>(false);
+  const [offlineSyncToast, setOfflineSyncToast] = useState<string>('');
 
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const wakeLockRef = useRef<any>(null);
@@ -210,12 +220,70 @@ export default function ScannerPage() {
       });
     }, 2000);
 
+    // 3. Online/Offline & Sync Queue Listeners
+    setIsOnline(db.isOnline());
+    setPendingSyncCount(db.getPendingSyncCount());
+
+    const handleOnlineEvent = () => {
+      setIsOnline(true);
+      db.flushOfflineQueue().then((res) => {
+        setPendingSyncCount(res.remainingCount);
+        if (res.syncedCount > 0) {
+          sound.playSuccessChime();
+          setOfflineSyncToast(`🌐 تم استعادة الاتصال بالإنترنت! تم رفع (${res.syncedCount}) حضور بنجاح إلى السحابة 🎉`);
+          setTimeout(() => setOfflineSyncToast(''), 4500);
+        }
+      });
+    };
+
+    const handleOfflineEvent = () => {
+      setIsOnline(false);
+      setOfflineSyncToast('⚠️ انقطع الاتصال بالإنترنت! تم تفعيل وضع الحفظ الأوفلاين التلقائي 💾');
+      setTimeout(() => setOfflineSyncToast(''), 4500);
+    };
+
+    window.addEventListener('online', handleOnlineEvent);
+    window.addEventListener('offline', handleOfflineEvent);
+
+    const unsubStorage = db.subscribe(() => {
+      setPendingSyncCount(db.getPendingSyncCount());
+      setIsOnline(db.isOnline());
+    });
+
     return () => {
       unsubscribeBus();
+      unsubStorage();
       clearInterval(syncInterval);
+      window.removeEventListener('online', handleOnlineEvent);
+      window.removeEventListener('offline', handleOfflineEvent);
       if (dismissTimeoutRef.current) clearTimeout(dismissTimeoutRef.current);
     };
   }, [selectedGroupId, syncSessionAttendance]);
+
+  // Manual Trigger to Flush Offline Queue
+  const handleManualSyncQueue = async () => {
+    setIsSyncingOfflineQueue(true);
+    try {
+      const res = await db.flushOfflineQueue();
+      setPendingSyncCount(res.remainingCount);
+      if (res.syncedCount > 0) {
+        sound.playSuccessChime();
+        setOfflineSyncToast(`✅ تمت مزامنة (${res.syncedCount}) سجل مع السحابة بنجاح تام! 🎉`);
+        try {
+          confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
+        } catch {}
+      } else {
+        setOfflineSyncToast('✅ جميع البيانات محدثة ومتزامنة مع السحابة!');
+      }
+      await db.syncFromSupabase();
+      if (selectedGroupId) syncSessionAttendance(selectedGroupId);
+    } catch {
+      setOfflineSyncToast('⚠️ تعذر إتمام المزامنة، تأكد من جودة اتصال الإنترنت');
+    } finally {
+      setIsSyncingOfflineQueue(false);
+      setTimeout(() => setOfflineSyncToast(''), 4000);
+    }
+  };
 
   // Handle group change
   const handleGroupChange = (newGroupId: string) => {
@@ -592,20 +660,37 @@ export default function ScannerPage() {
               <span>كشك الحضور والاسكانر</span>
             </span>
 
-            {/* Live Sync Badge between Mobile and Laptop */}
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black border transition-all ${
-              liveSyncPulse 
-                ? 'bg-emerald-600 text-white border-emerald-500 scale-105' 
-                : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-500/30'
-            }`}>
-              <Radio className="w-3 h-3 animate-pulse text-emerald-500 dark:text-emerald-300" />
-              <span>مزامنة سحابية لحظية (موبايل + لابتوب)</span>
-            </span>
+            {/* Network Online / Offline Status Badge */}
+            {isOnline ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30">
+                <Wifi className="w-3 h-3 text-emerald-500" />
+                <span>متصل بالسحابة (Online)</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-200 border border-amber-400 animate-pulse">
+                <WifiOff className="w-3 h-3 text-amber-600" />
+                <span>أوفلاين (الحفظ محلي نشط 💾)</span>
+              </span>
+            )}
+
+            {/* Offline Pending Buffer Counter & Flush Button */}
+            {pendingSyncCount > 0 && (
+              <button
+                type="button"
+                onClick={handleManualSyncQueue}
+                disabled={isSyncingOfflineQueue}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-md transition active:scale-95 animate-bounce"
+                title="اضغط للمزامنة الفورية مع السحابة"
+              >
+                <RefreshCw className={`w-3 h-3 ${isSyncingOfflineQueue ? 'animate-spin' : ''}`} />
+                <span>{pendingSyncCount} حضور معلق • مزامنة الآن 🔄</span>
+              </button>
+            )}
 
             {wakeLockActive && (
-              <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
-                <Smartphone className="w-3 h-3 text-amber-600" />
-                <span>الشاشة مضاءة دائماً (مانع القفل نشط 💡)</span>
+              <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                <Smartphone className="w-3 h-3 text-brand-500" />
+                <span>مانع القفل نشط 💡</span>
               </span>
             )}
           </div>
@@ -657,6 +742,13 @@ export default function ScannerPage() {
       {sessionToast && (
         <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-bold text-center animate-ios-spring">
           {sessionToast}
+        </div>
+      )}
+
+      {offlineSyncToast && (
+        <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-emerald-500/20 border border-amber-400/40 text-slate-900 dark:text-white text-xs font-black text-center animate-ios-spring flex items-center justify-center gap-2 shadow-sm">
+          <RefreshCw className="w-4 h-4 text-amber-500 animate-spin" />
+          <span>{offlineSyncToast}</span>
         </div>
       )}
 
