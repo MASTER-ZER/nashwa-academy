@@ -3,10 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, Lock, Unlock, KeyRound, Sparkles, AlertCircle, ArrowLeft } from 'lucide-react';
 import { sound } from '@/lib/audio';
+import { db } from '@/lib/storage';
 import confetti from 'canvas-confetti';
 import Link from 'next/link';
 
-const ADMIN_PASSCODE = '2026';
 const AUTH_KEY = 'nashwa_admin_authenticated_v1';
 
 export default function AdminPasscodeGate({ children }: { children: React.ReactNode }) {
@@ -17,6 +17,8 @@ export default function AdminPasscodeGate({ children }: { children: React.ReactN
   const [isShaking, setIsShaking] = useState<boolean>(false);
 
   useEffect(() => {
+    // Initial sync from DB
+    db.syncFromSupabase().catch(() => {});
     const saved = localStorage.getItem(AUTH_KEY);
     if (saved === 'true') {
       setIsAuthenticated(true);
@@ -42,7 +44,8 @@ export default function AdminPasscodeGate({ children }: { children: React.ReactN
   };
 
   const verifyPin = (inputPin: string) => {
-    if (inputPin === ADMIN_PASSCODE) {
+    const currentPasscode = db.getSettings().adminPasscode || '2026';
+    if (inputPin === currentPasscode) {
       sound.playSuccessChime();
       try {
         confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });

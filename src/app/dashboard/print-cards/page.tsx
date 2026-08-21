@@ -35,7 +35,7 @@ function BarcodeItem({ student, groupName }: { student: Student; groupName: stri
   }, [student.code]);
 
   return (
-    <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 print:border-slate-300 rounded-2xl p-3.5 bg-white text-slate-900 flex flex-col justify-between h-72 shadow-xs relative overflow-hidden">
+    <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 print:border-slate-400 rounded-2xl p-3.5 bg-white text-slate-900 flex flex-col justify-between h-72 shadow-xs relative overflow-hidden print:break-inside-avoid print:page-break-inside-avoid print:shadow-none print:h-[260px]">
       {/* Card Header */}
       <div className="flex items-start justify-between border-b border-slate-200 pb-1.5">
         <div>
