@@ -720,11 +720,12 @@ export default function SettingsDashboardPage() {
               حذف كافة الطلاب التجريبيين، وسجلات الحضور والغياب، وكشوف الاشتراكات، ونتائج الامتحانات السابقة للبدء من الصفر تماماً.
             </p>
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (confirm('هل أنت متأكد تماماً من تصفير كافة البيانات والطلاب لبدء العمل الحقيقي من الصفر؟')) {
-                  db.clearAllData();
+                  await db.clearAllData();
+                  localStorage.clear();
                   sound.playSuccessChime();
-                  alert('تم تصفير المنصة بنجاح! يمكنك الآن تسجيل وإدخال الطلاب الفعليين.');
+                  alert('تم تصفير المنصة بالكامل محلياً وسحابياً بنجاح! يمكنك الآن تسجيل وإدخال الطلاب الفعليين.');
                   window.location.reload();
                 }
               }}

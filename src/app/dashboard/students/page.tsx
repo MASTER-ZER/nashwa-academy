@@ -118,6 +118,23 @@ export default function StudentsDirectoryPage() {
             <QrCode className="w-4 h-4 text-cyan-300" />
             طباعة الكروت PDF
           </Link>
+
+          {data.students.length > 0 && (
+            <button
+              onClick={async () => {
+                if (confirm(`هل أنتِ متأكدة من حذف وتصفير جميع الطلاب (${data.students.length} طالب) للبدء من الصفر؟`)) {
+                  await db.clearAllData();
+                  localStorage.clear();
+                  loadData();
+                  window.location.reload();
+                }
+              }}
+              className="px-3.5 py-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 text-rose-600 dark:text-rose-400 text-xs font-bold transition flex items-center justify-center gap-1.5 border border-rose-200 dark:border-rose-900"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>تصفير القائمة 🧹</span>
+            </button>
+          )}
         </div>
       </div>
 

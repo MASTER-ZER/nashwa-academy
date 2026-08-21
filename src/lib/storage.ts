@@ -761,8 +761,14 @@ class StorageService {
   public deleteStudent(id: string): boolean {
     const data = this.getData();
     data.students = data.students.filter((s) => s.id !== id);
+    data.attendance = data.attendance.filter((a) => a.studentId !== id);
+    data.subscriptions = data.subscriptions.filter((s) => s.studentId !== id);
+    data.examResults = data.examResults.filter((r) => r.studentId !== id);
     this.saveData(data);
     if (supabase) {
+      supabase.from('exam_results').delete().eq('student_id', id).then(() => {});
+      supabase.from('subscriptions').delete().eq('student_id', id).then(() => {});
+      supabase.from('attendance').delete().eq('student_id', id).then(() => {});
       supabase.from('students').delete().eq('id', id).then(() => {});
     }
     return true;
@@ -934,7 +940,7 @@ class StorageService {
     this.clearAllData();
   }
 
-  public clearAllData() {
+  public async clearAllData(): Promise<void> {
     const cleanData: SystemData = {
       groups: INITIAL_GROUPS,
       students: [],
@@ -953,14 +959,18 @@ class StorageService {
     this.notifyListeners();
 
     if (supabase) {
-      Promise.all([
-        supabase.from('students').delete().neq('id', 'placeholder'),
-        supabase.from('attendance').delete().neq('id', 'placeholder'),
-        supabase.from('subscriptions').delete().neq('id', 'placeholder'),
-        supabase.from('exams').delete().neq('id', 'placeholder'),
-        supabase.from('exam_results').delete().neq('id', 'placeholder'),
-        supabase.from('sessions').delete().neq('id', 'placeholder'),
-      ]).catch((err) => console.warn('Supabase clear error:', err));
+      try {
+        await Promise.all([
+          supabase.from('exam_results').delete().neq('id', '___none___'),
+          supabase.from('exams').delete().neq('id', '___none___'),
+          supabase.from('attendance').delete().neq('id', '___none___'),
+          supabase.from('sessions').delete().neq('id', '___none___'),
+          supabase.from('subscriptions').delete().neq('id', '___none___'),
+          supabase.from('students').delete().neq('id', '___none___'),
+        ]);
+      } catch (err) {
+        console.warn('Supabase clear error:', err);
+      }
     }
   }
 }
