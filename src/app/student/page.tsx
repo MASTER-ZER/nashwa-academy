@@ -38,6 +38,7 @@ import {
 import confetti from 'canvas-confetti';
 import QRCode from 'qrcode';
 import JsBarcode from 'jsbarcode';
+import { generateStudentCardCanvas } from '@/lib/generateCardImage';
 
 export default function StudentPortalPage() {
   const [studentCode, setStudentCode] = useState('');
@@ -204,22 +205,21 @@ export default function StudentPortalPage() {
     setErrorMsg('');
   };
 
-  // Download 3D Card as high-res PNG into user's photo gallery
+  // Download 3D Card as ultra-crisp HD PNG into user's photo gallery (Pixel-perfect Canvas 2D)
   const handleDownloadCardImage = async () => {
-    const cardElement = document.getElementById('student-wallet-card');
-    if (!cardElement || !currentStudent) return;
+    if (!currentStudent) return;
 
     setIsDownloadingImage(true);
     try {
-      const html2canvas = (await import('html2canvas')).default;
-      const canvas = await html2canvas(cardElement, {
-        scale: 3, // Ultra-sharp 3x retina quality
-        useCORS: true,
-        backgroundColor: null,
-        logging: false,
+      const curMonth = getCurrentMonthLabel();
+      const imgData = await generateStudentCardCanvas({
+        student: currentStudent,
+        group: group,
+        qrDataUrl: qrDataUrl,
+        isPaid: isCurrentMonthPaid,
+        currentMonth: curMonth,
       });
 
-      const imgData = canvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.href = imgData;
       link.download = `كارت_طالب_مس_نشوى_${currentStudent.code}_${currentStudent.name.replace(/\s+/g, '_')}.png`;
@@ -229,7 +229,7 @@ export default function StudentPortalPage() {
 
       sound.playSuccessChime();
       try {
-        confetti({ particleCount: 35, spread: 55, origin: { y: 0.7 } });
+        confetti({ particleCount: 40, spread: 60, origin: { y: 0.7 } });
       } catch {}
     } catch (err) {
       console.error('Download card error', err);
