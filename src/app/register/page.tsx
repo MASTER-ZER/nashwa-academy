@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/storage';
 import { notifyNewStudentRegistration } from '@/lib/telegram';
+import { generateStudentWelcomeWhatsAppUrl } from '@/lib/whatsapp';
 import { Group, Student } from '@/types';
 import confetti from 'canvas-confetti';
 import { UserCheck, Sparkles, AlertCircle, ArrowRight, Phone, User, MapPin, Clock, QrCode, CheckCircle2 } from 'lucide-react';
@@ -138,9 +139,25 @@ export default function RegisterPage() {
         </div>
 
         <div className="space-y-3 pt-2">
+          {formData.groupId && (
+            <a
+              href={generateStudentWelcomeWhatsAppUrl({
+                teacherPhone: db.getSettings()?.assistantPhone || '01012345678',
+                studentName: formData.name,
+                studentCode: registeredCode,
+                groupName: groups.find((g) => g.id === formData.groupId)?.name || 'المجموعة',
+              })}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full inline-flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-lg shadow-emerald-600/25 active:scale-95 transition"
+            >
+              <span>📲 إرسال رسالة تأكيد لمس نشوى على واتساب</span>
+            </a>
+          )}
+
           <Link
             href="/student"
-            className="w-full inline-flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-black text-xs shadow-lg shadow-brand-600/25 active:scale-95 transition"
+            className="w-full inline-flex items-center justify-center gap-2 py-3 px-4 rounded-2xl bg-brand-700 hover:bg-brand-800 text-white font-bold text-xs shadow-md transition active:scale-95"
           >
             الانتقال المباشر لبوابة الطالب وكارت الـ QR
             <ArrowRight className="w-4 h-4" />

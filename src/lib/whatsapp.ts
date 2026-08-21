@@ -86,3 +86,17 @@ export function generateStudentAbsenceWhatsAppUrl(params: {
   const phone = formatEgyptianPhone(params.studentPhone);
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
+
+export function generateStudentWelcomeWhatsAppUrl(params: {
+  teacherPhone: string;
+  studentName: string;
+  studentCode: string;
+  groupName: string;
+}): string {
+  const message = `السلام عليكم يا مس نشوى 🌸\n` +
+    `أنا الطالب: (${params.studentName})\n` +
+    `قمت بالتسجيل في الأكاديمية بنجاح في (${params.groupName})، وكود الطالب الخاص بي هو: #${params.studentCode} 🎓✨`;
+
+  const phone = formatEgyptianPhone(params.teacherPhone || '01012345678');
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+}

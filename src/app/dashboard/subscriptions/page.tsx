@@ -45,9 +45,10 @@ export default function SubscriptionsDashboardPage() {
     };
   });
 
+  const subPrice = data.settings?.subscriptionPrice || 250;
   const paidCount = studentsWithSub.filter((s) => s.isPaid).length;
   const unpaidCount = studentsWithSub.filter((s) => !s.isPaid).length;
-  const totalCollected = paidCount * 250;
+  const totalCollected = paidCount * subPrice;
 
   const filteredList = studentsWithSub.filter(({ student, isPaid }) => {
     if (statusFilter === 'PAID' && !isPaid) return false;
@@ -127,7 +128,7 @@ export default function SubscriptionsDashboardPage() {
           <span className="text-xs text-rose-700 dark:text-rose-400 font-bold block">المتبقي عليهم اشتراك</span>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-2xl font-black font-mono text-rose-600 dark:text-rose-400">{unpaidCount}</span>
-            <span className="text-xs font-bold text-slate-400">طالب ({unpaidCount * 250} ج.م)</span>
+            <span className="text-xs font-bold text-slate-400">طالب ({unpaidCount * subPrice} ج.م)</span>
           </div>
         </div>
       </div>

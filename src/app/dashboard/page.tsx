@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { db } from '@/lib/storage';
+import { db, getCurrentMonthLabel } from '@/lib/storage';
 import { sound } from '@/lib/audio';
 import { Student, Group, Subscription, SystemData } from '@/types';
 import Link from 'next/link';
@@ -19,12 +19,12 @@ import {
   Phone, 
   MapPin, 
   Check, 
-  X,
-  Sparkles,
-  ArrowUpRight,
-  TrendingUp,
-  CheckCircle2,
-  AlertCircle
+  X, 
+  Sparkles, 
+  ArrowUpRight, 
+  TrendingUp, 
+  CheckCircle2, 
+  AlertCircle 
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -48,10 +48,11 @@ export default function DashboardOverviewPage() {
   const activeStudents = data.students.filter((s) => s.status === 'ACTIVE');
   const pendingStudents = data.students.filter((s) => s.status === 'PENDING');
 
-  const currentMonth = 'أكتوبر 2026';
+  const currentMonth = getCurrentMonthLabel();
+  const subPrice = data.settings?.subscriptionPrice || 250;
   const monthSubs = data.subscriptions.filter((s) => s.month === currentMonth);
   const paidSubsCount = monthSubs.filter((s) => s.isPaid).length;
-  const totalSubRevenue = paidSubsCount * 250;
+  const totalSubRevenue = paidSubsCount * subPrice;
 
   const handleApprove = (student: Student) => {
     db.approveStudent(student.id);
@@ -149,7 +150,7 @@ export default function DashboardOverviewPage() {
 
         <div className="liquid-glass rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">تحصيل شهر أكتوبر</span>
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">تحصيل {currentMonth}</span>
             <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">
               <CreditCard className="w-4 h-4" />
             </div>
