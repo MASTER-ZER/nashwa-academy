@@ -33,30 +33,59 @@ import {
   ExternalLink,
   Image as ImageIcon,
   FileText,
-  Printer
+  Printer,
+  Edit3,
+  Camera,
+  User,
+  MapPin,
+  Calendar,
+  X,
+  Send,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import QRCode from 'qrcode';
 import JsBarcode from 'jsbarcode';
 import { generateStudentCardCanvas } from '@/lib/generateCardImage';
+import DateWheelPicker from '@/components/DateWheelPicker';
+import { compressStudentPhoto } from '@/lib/imageCompressor';
+import { notifyStudentProfileUpdate } from '@/lib/telegram';
 
 export default function StudentPortalPage() {
   const [studentCode, setStudentCode] = useState('');
   const [phone, setPhone] = useState('');
   const [currentStudent, setCurrentStudent] = useState<Student | null>(null);
   const [group, setGroup] = useState<Group | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [examResults, setExamResults] = useState<{ result: ExamResult; exam: Exam }[]>([]);
 
-  const [activeTab, setActiveTab] = useState<'CARD' | 'ATTENDANCE' | 'SUBSCRIPTION' | 'EXAMS'>('CARD');
+  const [activeTab, setActiveTab] = useState<'CARD' | 'ATTENDANCE' | 'SUBSCRIPTION' | 'EXAMS' | 'EDIT'>('CARD');
   const [errorMsg, setErrorMsg] = useState('');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [cardDisplayType, setCardDisplayType] = useState<'QR' | 'BARCODE'>('QR');
   const [copiedMsg, setCopiedMsg] = useState(false);
   const [isDownloadingImage, setIsDownloadingImage] = useState(false);
 
+  // Edit Profile States
+  const [editFormData, setEditFormData] = useState({
+    name: '',
+    phone: '',
+    parentName: '',
+    parentPhone: '',
+    address: '',
+    birthDate: '2009-05-15',
+    photoUrl: '',
+    groupId: '',
+  });
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editSuccessMsg, setEditSuccessMsg] = useState('');
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+
   const barcodeSvgRef = useRef<SVGSVGElement | null>(null);
+  const editGalleryInputRef = useRef<HTMLInputElement>(null);
+  const editCameraInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-login from localStorage if available
   useEffect(() => {
@@ -68,6 +97,28 @@ export default function StudentPortalPage() {
       loadStudentData(savedCode);
     }
   }, []);
+
+  // Sync groups
+  useEffect(() => {
+    const d = db.getData();
+    setGroups(d.groups || []);
+  }, []);
+
+  // When currentStudent changes, update edit form data
+  useEffect(() => {
+    if (currentStudent) {
+      setEditFormData({
+        name: currentStudent.name,
+        phone: currentStudent.phone,
+        parentName: currentStudent.parentName,
+        parentPhone: currentStudent.parentPhone,
+        address: currentStudent.address || '',
+        birthDate: currentStudent.birthDate || '2009-05-15',
+        photoUrl: currentStudent.photoUrl || '',
+        groupId: currentStudent.groupId || '',
+      });
+    }
+  }, [currentStudent]);
 
   // Generate QR & Barcode when student is active
   useEffect(() => {
@@ -105,6 +156,7 @@ export default function StudentPortalPage() {
     await db.syncFromSupabase();
 
     const data = db.getData();
+    setGroups(data.groups || []);
     const std = data.students.find((s) => s.code === code.trim());
     if (!std) {
       setErrorMsg('لم يتم العثور على طالب بهذا الكود في المنصة');
@@ -142,8 +194,10 @@ export default function StudentPortalPage() {
       const savedCode = localStorage.getItem('logged_student_code');
       if (savedCode) {
         const data = db.getData();
+        setGroups(data.groups || []);
         const std = data.students.find((s) => s.code === savedCode.trim());
         if (std) {
+          setCurrentStudent(std);
           const grp = data.groups.find((g) => g.id === std.groupId);
           setGroup(grp || null);
           const att = data.attendance.filter((a) => a.studentId === std.id);
@@ -205,7 +259,81 @@ export default function StudentPortalPage() {
     setErrorMsg('');
   };
 
-  // Download 3D Card as ultra-crisp HD PNG into user's photo gallery (Pixel-perfect Canvas 2D)
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessingPhoto(true);
+    try {
+      const compressed = await compressStudentPhoto(file);
+      setEditFormData((prev) => ({ ...prev, photoUrl: compressed }));
+      setEditErrors((prev) => ({ ...prev, photo: '' }));
+    } catch (err) {
+      console.error('Photo compression error:', err);
+      setEditErrors((prev) => ({ ...prev, photo: 'فشل معالجة الصورة، يرجى اختيار صورة أخرى' }));
+    } finally {
+      setIsProcessingPhoto(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleSaveEditProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentStudent) return;
+
+    const errors: Record<string, string> = {};
+    if (!editFormData.name.trim()) errors.name = 'اسم الطالب مطلوب';
+    if (!editFormData.phone.trim()) errors.phone = 'رقم هاتف الطالب مطلوب';
+    if (!editFormData.parentPhone.trim()) errors.parentPhone = 'رقم ولي الأمر مطلوب';
+
+    if (Object.keys(errors).length > 0) {
+      setEditErrors(errors);
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      const updatedStudent: Student = {
+        ...currentStudent,
+        name: editFormData.name.trim(),
+        phone: editFormData.phone.trim(),
+        parentName: editFormData.parentName.trim() || currentStudent.parentName,
+        parentPhone: editFormData.parentPhone.trim() || currentStudent.parentPhone,
+        address: editFormData.address.trim() || currentStudent.address,
+        birthDate: editFormData.birthDate || currentStudent.birthDate,
+        photoUrl: editFormData.photoUrl || currentStudent.photoUrl,
+        groupId: editFormData.groupId || currentStudent.groupId,
+      };
+
+      // 1. Update in local DB & Supabase
+      db.updateStudent(currentStudent.id, updatedStudent);
+
+      // 2. Notify Miss Nashwa on Telegram
+      const selectedGrp = groups.find((g) => g.id === updatedStudent.groupId) || group;
+      notifyStudentProfileUpdate(updatedStudent, selectedGrp);
+
+      setCurrentStudent(updatedStudent);
+      setGroup(selectedGrp || null);
+      setEditSuccessMsg('تم حفظ وتحديث بياناتك بنجاح وإشعار المس فوراً! 🎉');
+
+      sound.playSuccessChime();
+      try {
+        confetti({ particleCount: 50, spread: 70, origin: { y: 0.6 } });
+      } catch {}
+
+      setTimeout(() => {
+        setEditSuccessMsg('');
+        setActiveTab('CARD');
+      }, 2500);
+    } catch (err) {
+      console.error('Error updating profile:', err);
+      alert('حدث خطأ أثناء حفظ التعديلات، يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  // Download 3D Card as ultra-crisp HD PNG into user's photo gallery
   const handleDownloadCardImage = async () => {
     if (!currentStudent) return;
 
@@ -340,10 +468,18 @@ export default function StudentPortalPage() {
           {/* Top Profile Header */}
           <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-slate-200/80 dark:border-slate-800 no-print">
             <div className="flex items-center gap-3.5">
-              <div className="w-14 h-14 rounded-2xl overflow-hidden shadow-md border border-white/20 shrink-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/logo.png" alt="مس نشوى" className="w-full h-full object-cover" />
-              </div>
+              {currentStudent.photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={currentStudent.photoUrl}
+                  alt={currentStudent.name}
+                  className="w-14 h-14 rounded-2xl object-cover border-2 border-emerald-500 shadow-md shrink-0"
+                />
+              ) : (
+                <div className="w-14 h-14 rounded-2xl bg-brand-600 text-white flex items-center justify-center font-black text-xl shadow-md shrink-0">
+                  #{currentStudent.code}
+                </div>
+              )}
 
               <div>
                 <div className="flex items-center gap-2">
@@ -366,22 +502,33 @@ export default function StudentPortalPage() {
               </div>
             </div>
 
-            <button
-              onClick={handleLogout}
-              className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-rose-50 dark:hover:bg-rose-950 text-slate-600 dark:text-slate-300 hover:text-rose-500 text-xs font-bold transition flex items-center gap-1.5 self-end sm:self-center border border-slate-200 dark:border-slate-700"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>تبديل الحساب</span>
-            </button>
+            <div className="flex items-center gap-2 self-end sm:self-center">
+              <button
+                onClick={() => setActiveTab('EDIT')}
+                className="px-3.5 py-2 rounded-xl bg-brand-50 dark:bg-brand-950/80 hover:bg-brand-100 text-brand-700 dark:text-cyan-300 text-xs font-bold transition flex items-center gap-1.5 border border-brand-200 dark:border-brand-900"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>تعديل بياناتي ✏️</span>
+              </button>
+
+              <button
+                onClick={handleLogout}
+                className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-rose-50 dark:hover:bg-rose-950 text-slate-600 dark:text-slate-300 hover:text-rose-500 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>تبديل الحساب</span>
+              </button>
+            </div>
           </div>
 
           {/* Navigation Tabs (Segmented Controls) */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1.5 rounded-2xl liquid-glass border border-slate-200/80 dark:border-slate-800 no-print">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1.5 rounded-2xl liquid-glass border border-slate-200/80 dark:border-slate-800 no-print">
             {[
-              { id: 'CARD', label: 'كارت الهوية', fullLabel: 'كارت الهوية الرقمي', icon: QrCode },
-              { id: 'ATTENDANCE', label: `الحضور (${attendance.length})`, fullLabel: `سجل الحضور (${attendance.length})`, icon: CalendarCheck },
-              { id: 'EXAMS', label: `الدرجات (${examResults.length})`, fullLabel: `كشف الدرجات (${examResults.length})`, icon: Award },
-              { id: 'SUBSCRIPTION', label: 'الاشتراك', fullLabel: 'الاشتراك الشهري', icon: CreditCard },
+              { id: 'CARD', label: 'كارت الهوية', icon: QrCode },
+              { id: 'ATTENDANCE', label: `الحضور (${attendance.length})`, icon: CalendarCheck },
+              { id: 'EXAMS', label: `الدرجات (${examResults.length})`, icon: Award },
+              { id: 'SUBSCRIPTION', label: 'الاشتراك', icon: CreditCard },
+              { id: 'EDIT', label: 'تعديل البيانات ✏️', icon: Edit3 },
             ].map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -405,7 +552,7 @@ export default function StudentPortalPage() {
           {/* TAB 1: Apple Wallet Pass Card View */}
           {activeTab === 'CARD' && (
             <div className="space-y-6 max-w-md mx-auto animate-ios-spring">
-              {/* Apple Wallet Pass Container (Has id="student-wallet-card" for Image/PDF Export) */}
+              {/* Apple Wallet Pass Container */}
               <div id="student-wallet-card" className="apple-wallet-pass p-7 text-white space-y-6 shadow-2xl">
                 {/* Pass Top Header */}
                 <div className="flex items-start justify-between border-b border-white/15 pb-4">
@@ -447,105 +594,315 @@ export default function StudentPortalPage() {
                   <div className="space-y-1.5 pt-1 text-xs">
                     <span className="text-[10px] text-emerald-200/80 font-bold block">المجموعة ومواعيد الحصص الأسبوعية:</span>
                     <p className="font-bold text-white text-xs leading-tight">{group ? group.name : '—'}</p>
-                    
-                    {group && group.days && (
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {group.days.map((day, idx) => (
-                          <span
-                            key={idx}
-                            className="px-2.5 py-1 rounded-lg bg-white/15 border border-white/20 text-white font-bold text-[11px] flex items-center gap-1"
-                          >
-                            <span>📅 {day}</span>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="pt-1 text-xs border-t border-white/10 flex items-center justify-between">
-                    <span className="text-[10px] text-emerald-200/80 font-bold">حالة الاشتراك الشهري:</span>
-                    <p className={`font-bold flex items-center gap-1 ${isCurrentMonthPaid ? 'text-emerald-300' : 'text-amber-300'}`}>
-                      {isCurrentMonthPaid ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
-                      <span>{isCurrentMonthPaid ? `مسدد (${currentAcademicMonth})` : `مستحق (${currentAcademicMonth})`}</span>
-                    </p>
                   </div>
                 </div>
 
-                {/* Code Selector (QR vs Barcode) */}
-                <div className="pt-2 flex justify-center no-print">
-                  <div className="inline-flex p-1 rounded-xl bg-white/10 border border-white/15 text-xs font-bold">
-                    <button
-                      onClick={() => setCardDisplayType('QR')}
-                      className={`px-3 py-1 rounded-lg transition ${
-                        cardDisplayType === 'QR' ? 'bg-white text-slate-950 shadow-xs' : 'text-white/80'
-                      }`}
-                    >
-                      رمز الـ QR (موصى به ⚡)
-                    </button>
-                    <button
-                      onClick={() => setCardDisplayType('BARCODE')}
-                      className={`px-3 py-1 rounded-lg transition ${
-                        cardDisplayType === 'BARCODE' ? 'bg-white text-slate-950 shadow-xs' : 'text-white/80'
-                      }`}
-                    >
-                      الباركود الشريطي
-                    </button>
+                {/* Scannable Code Display */}
+                <div className="bg-white rounded-3xl p-4 text-center shadow-inner text-slate-900 space-y-3 border border-white/20">
+                  <div className="flex items-center justify-between px-2 text-[11px] font-bold text-slate-500 border-b border-slate-100 pb-2">
+                    <span>امسح عند باب القاعة</span>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setCardDisplayType('QR')}
+                        className={`px-2 py-0.5 rounded text-[10px] ${
+                          cardDisplayType === 'QR' ? 'bg-brand-600 text-white' : 'bg-slate-100'
+                        }`}
+                      >
+                        QR
+                      </button>
+                      <button
+                        onClick={() => setCardDisplayType('BARCODE')}
+                        className={`px-2 py-0.5 rounded text-[10px] ${
+                          cardDisplayType === 'BARCODE' ? 'bg-brand-600 text-white' : 'bg-slate-100'
+                        }`}
+                      >
+                        Barcode
+                      </button>
+                    </div>
                   </div>
-                </div>
 
-                {/* Scannable Target Container */}
-                <div className="p-4 rounded-2xl bg-white text-slate-950 flex flex-col items-center justify-center shadow-lg">
                   {cardDisplayType === 'QR' ? (
-                    qrDataUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={qrDataUrl} alt="Student QR Code" className="w-[min(56vw,224px)] aspect-square object-contain mx-auto" />
-                    ) : (
-                      <div className="w-[min(56vw,224px)] aspect-square flex items-center justify-center text-slate-400">جاري التوليد...</div>
-                    )
+                    <div className="flex justify-center p-1">
+                      {qrDataUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={qrDataUrl} alt="Student QR" className="w-44 h-44 rounded-xl" />
+                      )}
+                    </div>
                   ) : (
-                    <div className="py-2 overflow-x-auto max-w-full">
-                      <svg ref={barcodeSvgRef} className="mx-auto" />
+                    <div className="flex justify-center overflow-hidden py-3">
+                      <svg ref={barcodeSvgRef} className="max-w-full" />
                     </div>
                   )}
-                  <p className="text-[11px] font-bold text-slate-500 font-mono mt-1">وجه هذا الرمز لكاميرا المس لتسجيل الحضور</p>
+
+                  <p className="text-[10px] text-slate-400 font-semibold">
+                    رمز الحضور السريع الذكي للسنتر
+                  </p>
                 </div>
               </div>
 
-              {/* Action Buttons for Image Download & PDF Print */}
+              {/* Action Buttons */}
               <div className="space-y-2 no-print">
-                <div className="flex gap-2">
-                  {/* Download Image Button */}
-                  <button
-                    onClick={handleDownloadCardImage}
-                    disabled={isDownloadingImage}
-                    className="flex-1 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-black text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/25 active:scale-95 disabled:opacity-50"
-                  >
-                    <ImageIcon className="w-4 h-4" />
-                    <span>{isDownloadingImage ? 'جاري الحفظ...' : 'تحميل الكارت في المعرض 🖼️'}</span>
-                  </button>
+                <button
+                  onClick={handleDownloadCardImage}
+                  disabled={isDownloadingImage}
+                  className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition active:scale-95"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>{isDownloadingImage ? 'جاري إنشاء وتنزيل الصورة...' : 'حفظ الكارت كصورة في الاستوديو 📥'}</span>
+                </button>
 
-                  {/* Save PDF / Print Button */}
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={handleSavePdf}
-                    className="flex-1 py-3.5 rounded-2xl bg-brand-700 hover:bg-brand-800 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-xs active:scale-95"
+                    className="py-3 rounded-xl bg-slate-900 dark:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition"
                   >
-                    <Printer className="w-4 h-4" />
-                    <span>حفظ PDF للطباعة 📄</span>
+                    <Printer className="w-4 h-4 text-cyan-300" />
+                    <span>طباعة الكارت PDF</span>
+                  </button>
+
+                  <button
+                    onClick={handleShareCard}
+                    className="py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 transition"
+                  >
+                    <Share2 className="w-4 h-4" />
+                    <span>{copiedMsg ? 'تم نسخ الرابط! ✅' : 'مشاركة الكارت'}</span>
                   </button>
                 </div>
-
-                <button
-                  onClick={handleShareCard}
-                  className="w-full py-2.5 rounded-2xl liquid-glass hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs transition flex items-center justify-center gap-1.5 border border-slate-200 dark:border-slate-700 shadow-2xs"
-                >
-                  <Share2 className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>{copiedMsg ? 'تم نسخ بيانات الكارت! ✅' : 'مشاركة بيانات الكارت'}</span>
-                </button>
               </div>
             </div>
           )}
 
-          {/* TAB 2: Attendance History */}
+          {/* TAB 2: EDIT STUDENT PROFILE */}
+          {activeTab === 'EDIT' && (
+            <div className="liquid-glass rounded-3xl p-6 sm:p-8 shadow-md space-y-6 max-w-xl mx-auto animate-ios-spring">
+              <div className="flex items-center justify-between border-b border-slate-200/60 dark:border-slate-800 pb-3">
+                <div>
+                  <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    <Edit3 className="w-5 h-5 text-brand-600 dark:text-cyan-400" />
+                    <span>تعديل بيانات الطالب #{currentStudent.code}</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    يمكنك تعديل رقم الهاتف، العنوان، الصورة، وتاريخ الميلاد في أي وقت
+                  </p>
+                </div>
+                <span className="w-9 h-9 rounded-2xl bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-cyan-300 font-mono font-black text-xs flex items-center justify-center">
+                  #{currentStudent.code}
+                </span>
+              </div>
+
+              {editSuccessMsg && (
+                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-2 animate-ios-spring">
+                  <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
+                  <span>{editSuccessMsg}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSaveEditProfile} className="space-y-4 text-right">
+                {/* Name */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                    <User className="w-3.5 h-3.5 text-cyan-500" />
+                    <span>اسم الطالب ثلاثياً</span>
+                    <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormData.name}
+                    onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                    className={`w-full px-3.5 py-2.5 text-xs rounded-xl border ${
+                      editErrors.name ? 'border-rose-500 bg-rose-50/20' : 'border-slate-300 dark:border-slate-700'
+                    } bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500`}
+                  />
+                  {editErrors.name && <p className="text-[11px] text-rose-500">{editErrors.name}</p>}
+                </div>
+
+                {/* Phones */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                      <Phone className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>رقم هاتف الطالب (واتساب)</span>
+                      <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      dir="ltr"
+                      required
+                      value={editFormData.phone}
+                      onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
+                      className="w-full px-3.5 py-2.5 text-xs font-mono rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                    />
+                    {editErrors.phone && <p className="text-[11px] text-rose-500">{editErrors.phone}</p>}
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                      <Phone className="w-3.5 h-3.5 text-brand-500" />
+                      <span>رقم هاتف ولي الأمر</span>
+                      <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      dir="ltr"
+                      required
+                      value={editFormData.parentPhone}
+                      onChange={(e) => setEditFormData({ ...editFormData, parentPhone: e.target.value })}
+                      className="w-full px-3.5 py-2.5 text-xs font-mono rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                    />
+                    {editErrors.parentPhone && <p className="text-[11px] text-rose-500">{editErrors.parentPhone}</p>}
+                  </div>
+                </div>
+
+                {/* Parent Name & Address */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">اسم ولي الأمر</label>
+                    <input
+                      type="text"
+                      value={editFormData.parentName}
+                      onChange={(e) => setEditFormData({ ...editFormData, parentName: e.target.value })}
+                      className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5 text-rose-500" />
+                      <span>العنوان / المنطقة</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="مثال: المنصورة - حي الجامعة"
+                      value={editFormData.address}
+                      onChange={(e) => setEditFormData({ ...editFormData, address: e.target.value })}
+                      className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Date of Birth Wheel Picker */}
+                <DateWheelPicker
+                  value={editFormData.birthDate}
+                  onChange={(val) => setEditFormData((prev) => ({ ...prev, birthDate: val }))}
+                  label="تاريخ الميلاد"
+                />
+
+                {/* Photo Update Section with Gallery and Camera */}
+                <div className="space-y-2.5 p-4 rounded-2xl bg-white/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+                  <label className="text-xs font-bold text-slate-800 dark:text-white flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Camera className="w-4 h-4 text-cyan-500" />
+                      الصورة الشخصية (تظهر في الكارت الذكي)
+                    </span>
+                    {editFormData.photoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setEditFormData((prev) => ({ ...prev, photoUrl: '' }))}
+                        className="text-[10px] text-rose-500 font-bold"
+                      >
+                        إزالة الصورة ❌
+                      </button>
+                    )}
+                  </label>
+
+                  {editFormData.photoUrl ? (
+                    <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={editFormData.photoUrl}
+                        alt="Preview"
+                        className="w-14 h-14 rounded-2xl object-cover border-2 border-emerald-500 shadow-sm"
+                      />
+                      <div className="flex-1 space-y-1">
+                        <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">تم اختيار الصورة بنجاح ✅</p>
+                        <p className="text-[10px] text-slate-400">يمكنك تغييرها باختيار صورة جديدة من الأزرار أدناه</p>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => editGalleryInputRef.current?.click()}
+                      disabled={isProcessingPhoto}
+                      className="py-2.5 px-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-800/70 hover:bg-brand-50 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95"
+                    >
+                      <ImageIcon className="w-4 h-4 text-brand-600 dark:text-cyan-400" />
+                      <span>اختيار من المعرض 🖼️</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => editCameraInputRef.current?.click()}
+                      disabled={isProcessingPhoto}
+                      className="py-2.5 px-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-800/70 hover:bg-emerald-50 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95"
+                    >
+                      <Camera className="w-4 h-4 text-emerald-500" />
+                      <span>سيلفي بالكاميرا 📸</span>
+                    </button>
+                  </div>
+
+                  <input
+                    ref={editGalleryInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handlePhotoUpload}
+                    className="hidden"
+                  />
+                  <input
+                    ref={editCameraInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="user"
+                    onChange={handlePhotoUpload}
+                    className="hidden"
+                  />
+                </div>
+
+                {/* Group Selection */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-cyan-500" />
+                    <span>المجموعة وموعد الحصة</span>
+                  </label>
+                  <select
+                    value={editFormData.groupId}
+                    onChange={(e) => setEditFormData({ ...editFormData, groupId: e.target.value })}
+                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                  >
+                    {groups.map((grp) => (
+                      <option key={grp.id} value={grp.id}>
+                        {grp.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Submit & Cancel */}
+                <div className="pt-3 flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={isSavingEdit}
+                    className="flex-1 py-3.5 rounded-2xl bg-gradient-to-r from-brand-600 to-emerald-600 hover:from-brand-500 hover:to-emerald-500 text-white font-black text-xs shadow-lg shadow-brand-600/20 transition active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>{isSavingEdit ? 'جاري حفظ وإرسال التعديل...' : 'حفظ وتحديث البيانات فوراً 🚀'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('CARD')}
+                    className="px-5 py-3.5 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* TAB 3: Attendance History */}
           {activeTab === 'ATTENDANCE' && (
             <div className="liquid-glass rounded-3xl p-6 shadow-xs space-y-4">
               <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -581,7 +938,7 @@ export default function StudentPortalPage() {
             </div>
           )}
 
-          {/* TAB 3: Exam Results */}
+          {/* TAB 4: Exam Results */}
           {activeTab === 'EXAMS' && (
             <div className="liquid-glass rounded-3xl p-6 shadow-xs space-y-4">
               <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -623,7 +980,7 @@ export default function StudentPortalPage() {
             </div>
           )}
 
-          {/* TAB 4: Subscriptions */}
+          {/* TAB 5: Subscriptions */}
           {activeTab === 'SUBSCRIPTION' && (
             <div className="liquid-glass rounded-3xl p-6 shadow-xs space-y-4">
               <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">

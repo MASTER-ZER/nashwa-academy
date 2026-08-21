@@ -148,3 +148,57 @@ export async function notifyNewStudentRegistration(student: Student, group?: Gro
 
   return sendTelegramMessage(messageText, inlineKeyboard);
 }
+
+export async function notifyStudentProfileUpdate(
+  student: Student,
+  group?: Group | null
+) {
+  const groupName = group ? group.name : 'غير محدد';
+  const cleanParentPhone = student.parentPhone.replace(/\D/g, '').replace(/^0/, '20');
+
+  const safeStudentName = escapeHtml(student.name);
+  const safeStudentCode = escapeHtml(student.code);
+  const safeStudentPhone = escapeHtml(student.phone);
+  const safeParentName = escapeHtml(student.parentName);
+  const safeParentPhone = escapeHtml(student.parentPhone);
+  const safeAddress = escapeHtml(student.address || 'غير مسجل');
+  const safeBirthDate = escapeHtml(student.birthDate || 'غير مسجل');
+  const safeGroupName = escapeHtml(groupName);
+
+  const messageText = `
+✏️ <b>إشعار تحديث بيانات طالب (#${safeStudentCode})</b> 🌸
+
+👤 <b>اسم الطالب:</b> ${safeStudentName}
+🔢 <b>كود الطالب:</b> <code>#${safeStudentCode}</code>
+🎂 <b>تاريخ الميلاد:</b> <code>${safeBirthDate}</code>
+📞 <b>هاتف الطالب:</b> <code>${safeStudentPhone}</code>
+👨‍👦 <b>ولي الأمر:</b> ${safeParentName} (<code>${safeParentPhone}</code>)
+📍 <b>العنوان:</b> ${safeAddress}
+⏰ <b>المجموعة:</b> ${safeGroupName}
+🕒 <b>وقت التعديل:</b> ${new Date().toLocaleDateString('ar-EG')} - ${new Date().toLocaleTimeString('ar-EG')}
+`;
+
+  const inlineKeyboard = {
+    inline_keyboard: [
+      [
+        {
+          text: '📂 فتح لوحة تحكم الطلاب',
+          url: 'https://nashwa-academy.vercel.app/dashboard/students',
+        },
+        {
+          text: '💬 واتساب ولي الأمر',
+          url: `https://wa.me/${cleanParentPhone}?text=${encodeURIComponent(
+            `أهلاً بحضرتك أستاذ ${student.parentName}، تم استلام تحديث بيانات الطالب (${student.name}) في أكاديمية مس نشوى 🌸`
+          )}`,
+        },
+      ],
+    ],
+  };
+
+  if (student.photoUrl) {
+    return sendTelegramPhoto(student.photoUrl, messageText, inlineKeyboard);
+  }
+
+  return sendTelegramMessage(messageText, inlineKeyboard);
+}
+
