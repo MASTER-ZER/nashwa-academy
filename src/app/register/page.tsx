@@ -1,38 +1,48 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { db } from '@/lib/storage';
 import { notifyNewStudentRegistration } from '@/lib/telegram';
 import { generateStudentWelcomeWhatsAppUrl } from '@/lib/whatsapp';
 import { Group, Student } from '@/types';
 import confetti from 'canvas-confetti';
-import { UserCheck, Sparkles, AlertCircle, ArrowRight, Phone, User, MapPin, Clock, QrCode, CheckCircle2 } from 'lucide-react';
+import { UserCheck, Sparkles, AlertCircle, ArrowRight, Phone, User, MapPin, Clock, QrCode, CheckCircle2, Camera, Upload, Image as ImageIcon, X } from 'lucide-react';
 import Link from 'next/link';
+import DateWheelPicker from '@/components/DateWheelPicker';
+import { compressStudentPhoto } from '@/lib/imageCompressor';
 
 export default function RegisterPage() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [existingStudent, setExistingStudent] = useState<Student | null>(null);
+  const [requirePhoto, setRequirePhoto] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
     parentName: '',
     parentPhone: '',
     address: '',
+    birthDate: '2009-05-15',
+    photoUrl: '',
     groupId: '',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [registeredCode, setRegisteredCode] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     db.syncFromSupabase().then(() => {
       const data = db.getData();
       setGroups(data.groups);
+      setRequirePhoto(Boolean(data.settings?.requireStudentPhoto));
     });
 
     const data = db.getData();
     setGroups(data.groups);
+    setRequirePhoto(Boolean(data.settings?.requireStudentPhoto));
     if (data.groups.length > 0) {
       setFormData((prev) => ({ ...prev, groupId: data.groups[0].id }));
     }
@@ -50,7 +60,27 @@ export default function RegisterPage() {
     return /^(010|011|012|015)\d{8}$/.test(cleaned);
   };
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessingPhoto(true);
+    try {
+      const compressed = await compressStudentPhoto(file);
+      setFormData((prev) => ({ ...prev, photoUrl: compressed }));
+      setErrors((prev) => ({ ...prev, photo: '' }));
+    } catch (err) {
+      console.error('Photo compression error:', err);
+      setErrors((prev) => ({ ...prev, photo: 'فشل معالجة الصورة، يرجى تجربة صورة أخرى' }));
+    } finally {
+      setIsProcessingPhoto(false);
+    }
+  };
+
+  const handleRemovePhoto = () => {
+    setFormData((prev) => ({ ...prev, photoUrl: '' }));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,6 +106,10 @@ export default function RegisterPage() {
 
     if (!formData.address.trim()) {
       newErrors.address = 'يرجى كتابة العنوان أو المنطقة';
+    }
+
+    if (requirePhoto && !formData.photoUrl) {
+      newErrors.photo = 'الصورة الشخصية مطلوبة لإصدار الكارت، يرجى رفع أو التقاط صورتك 📸';
     }
 
     if (!formData.groupId) {
@@ -105,6 +139,8 @@ export default function RegisterPage() {
         parentName: formData.parentName.trim(),
         parentPhone: formData.parentPhone.trim(),
         address: formData.address.trim(),
+        birthDate: formData.birthDate || '2009-05-15',
+        photoUrl: formData.photoUrl || '',
         academicYear: 'FIRST_SEC',
         groupId: formData.groupId,
       });
@@ -323,6 +359,82 @@ export default function RegisterPage() {
           />
           {errors.address && <p className="text-[11px] text-rose-600 font-semibold">{errors.address}</p>}
         </div>
+
+        {/* Date of Birth Wheel Picker */}
+        <DateWheelPicker
+          value={formData.birthDate}
+          onChange={(val) => setFormData((prev) => ({ ...prev, birthDate: val }))}
+          label="تاريخ الميلاد (اختر بالبكرة السلسة)"
+          required
+        />
+
+        {/* Photo Upload Section (Controlled by Admin Settings Toggle) */}
+        {requirePhoto && (
+          <div className="space-y-2 p-4 rounded-2xl bg-brand-50/40 dark:bg-brand-950/30 border border-brand-200/60 dark:border-brand-900/50 animate-ios-spring">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                <Camera className="w-4 h-4 text-brand-600 dark:text-cyan-400" />
+                <span>الصورة الشخصية للطالب (مطلوبة لإصدار الكارت الذكي)</span>
+                <span className="text-rose-500">*</span>
+              </label>
+              <span className="text-[10px] text-brand-700 dark:text-cyan-300 font-bold">إجباري 📸</span>
+            </div>
+
+            {formData.photoUrl ? (
+              <div className="flex items-center gap-4 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-md border-2 border-emerald-500 shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={formData.photoUrl} alt="Student Preview" className="w-full h-full object-cover" />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>تم التقاط ومعالجة الصورة بنجاح!</span>
+                  </p>
+                  <p className="text-[10px] text-slate-400">ستظهر هذه الصورة في كارت الحضور الذكي والـ ID</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRemovePhoto}
+                  className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 hover:bg-rose-100 transition"
+                  title="تغيير الصورة"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className={`p-5 rounded-2xl border-2 border-dashed ${
+                  errors.photo ? 'border-rose-400 bg-rose-50/20' : 'border-brand-300 dark:border-brand-800 hover:border-brand-500'
+                } bg-white/60 dark:bg-slate-900/60 flex flex-col items-center justify-center gap-2 cursor-pointer transition active:scale-[0.99]`}
+              >
+                <div className="w-12 h-12 rounded-2xl bg-brand-100 dark:bg-brand-950 text-brand-600 dark:text-cyan-400 flex items-center justify-center shadow-xs">
+                  {isProcessingPhoto ? (
+                    <div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Camera className="w-6 h-6" />
+                  )}
+                </div>
+                <div className="text-center">
+                  <p className="text-xs font-bold text-slate-800 dark:text-white">
+                    {isProcessingPhoto ? 'جاري ضغط ومعالجة الصورة...' : 'اضغط هنا لالتقاط صورة بالكاميرا أو اختيارها من المعرض'}
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">صورة واضحة للوجه (سيلفي أو صورة شخصية)</p>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="user"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                />
+              </div>
+            )}
+            {errors.photo && <p className="text-[11px] text-rose-600 font-semibold">{errors.photo}</p>}
+          </div>
+        )}
 
         {/* Group Selection */}
         <div className="space-y-1.5">

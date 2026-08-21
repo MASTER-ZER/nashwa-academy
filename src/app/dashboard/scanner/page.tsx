@@ -912,16 +912,30 @@ export default function ScannerPage() {
                     </span>
                   </div>
 
-                  <div className="text-right space-y-1">
-                    <span className="text-xs font-mono font-black text-emerald-600 dark:text-emerald-400">
-                      #{scanResult.student?.code}
-                    </span>
-                    <h3 className="text-2xl font-black text-slate-900 dark:text-white">
-                      {scanResult.student?.name}
-                    </h3>
-                    <p className="text-xs text-slate-600 dark:text-slate-300 font-semibold">
-                      {selectedGroup?.name}
-                    </p>
+                  <div className="flex items-center gap-3">
+                    {scanResult.student?.photoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={scanResult.student.photoUrl}
+                        alt={scanResult.student.name}
+                        className="w-16 h-16 rounded-2xl object-cover border-2 border-emerald-500 shadow-md shrink-0"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-2xl bg-emerald-600/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-mono font-black text-xl border border-emerald-500/30 shrink-0">
+                        #{scanResult.student?.code}
+                      </div>
+                    )}
+                    <div className="text-right space-y-0.5 flex-1">
+                      <span className="text-xs font-mono font-black text-emerald-600 dark:text-emerald-400">
+                        #{scanResult.student?.code}
+                      </span>
+                      <h3 className="text-xl font-black text-slate-900 dark:text-white">
+                        {scanResult.student?.name}
+                      </h3>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 font-semibold">
+                        {selectedGroup?.name}
+                      </p>
+                    </div>
                   </div>
 
                   <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-900 dark:text-emerald-200 text-xs font-bold flex items-center justify-between">
@@ -954,16 +968,30 @@ export default function ScannerPage() {
                     </span>
                   </div>
 
-                  <div className="text-right space-y-1">
-                    <span className="text-xs font-mono font-black text-rose-600 dark:text-rose-400">
-                      #{scanResult.student?.code}
-                    </span>
-                    <h3 className="text-2xl font-black text-slate-900 dark:text-white">
-                      {scanResult.student?.name}
-                    </h3>
-                    <p className="text-xs text-slate-600 dark:text-slate-300 font-semibold">
-                      {selectedGroup?.name}
-                    </p>
+                  <div className="flex items-center gap-3">
+                    {scanResult.student?.photoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={scanResult.student.photoUrl}
+                        alt={scanResult.student.name}
+                        className="w-16 h-16 rounded-2xl object-cover border-2 border-rose-500 shadow-md shrink-0"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-2xl bg-rose-600/20 text-rose-600 dark:text-rose-400 flex items-center justify-center font-mono font-black text-xl border border-rose-500/30 shrink-0">
+                        #{scanResult.student?.code}
+                      </div>
+                    )}
+                    <div className="text-right space-y-0.5 flex-1">
+                      <span className="text-xs font-mono font-black text-rose-600 dark:text-rose-400">
+                        #{scanResult.student?.code}
+                      </span>
+                      <h3 className="text-xl font-black text-slate-900 dark:text-white">
+                        {scanResult.student?.name}
+                      </h3>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 font-semibold">
+                        {selectedGroup?.name}
+                      </p>
+                    </div>
                   </div>
 
                   {/* 1-Click Action Buttons */}

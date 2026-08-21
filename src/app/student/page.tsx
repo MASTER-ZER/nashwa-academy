@@ -427,9 +427,20 @@ export default function StudentPortalPage() {
 
                 {/* Pass Student Details */}
                 <div className="space-y-3.5">
-                  <div>
-                    <span className="text-[10px] uppercase tracking-wider text-emerald-200/80 font-bold block">اسم الطالب</span>
-                    <h2 className="text-2xl font-black tracking-tight">{currentStudent.name}</h2>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <span className="text-[10px] uppercase tracking-wider text-emerald-200/80 font-bold block">اسم الطالب</span>
+                      <h2 className="text-xl sm:text-2xl font-black tracking-tight">{currentStudent.name}</h2>
+                      {currentStudent.birthDate && (
+                        <p className="text-[11px] text-emerald-200 font-mono mt-0.5">📅 الميلاد: {currentStudent.birthDate}</p>
+                      )}
+                    </div>
+                    {currentStudent.photoUrl && (
+                      <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-white/40 shadow-lg shrink-0">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={currentStudent.photoUrl} alt={currentStudent.name} className="w-full h-full object-cover" />
+                      </div>
+                    )}
                   </div>
 
                   {/* Clear Day-by-Day Schedule Boxes */}

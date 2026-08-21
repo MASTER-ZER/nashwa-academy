@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
     admin_passcode TEXT NOT NULL DEFAULT '2026',
     assistant_phone TEXT NOT NULL DEFAULT '01012345678',
     center_location TEXT NOT NULL DEFAULT 'سنتر الأوائل - قاعة 1',
+    require_student_photo BOOLEAN NOT NULL DEFAULT FALSE,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -35,6 +36,8 @@ CREATE TABLE IF NOT EXISTS public.students (
     parent_name TEXT NOT NULL,
     parent_phone TEXT NOT NULL,
     address TEXT NOT NULL DEFAULT '',
+    birth_date TEXT DEFAULT '',
+    photo_url TEXT DEFAULT '',
     academic_year TEXT NOT NULL DEFAULT 'FIRST_SEC',
     group_id TEXT REFERENCES public.groups(id) ON DELETE SET NULL,
     status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'ACTIVE', 'SUSPENDED')),

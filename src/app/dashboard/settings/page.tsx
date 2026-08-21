@@ -34,6 +34,7 @@ import {
   Check,
   Zap,
   Sliders,
+  Camera,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -54,6 +55,7 @@ export default function SettingsDashboardPage() {
     centerLocation: 'سنتر الأوائل - قاعة 1',
     telegramBotToken: '8897471175:AAH__IM1R9Ro2yYdClmtZ_X4TvzFZsr5uUs',
     telegramAdminChatId: '6602868710',
+    requireStudentPhoto: false,
   });
 
   const [lastBackup, setLastBackup] = useState<string>('');
@@ -493,6 +495,29 @@ export default function SettingsDashboardPage() {
               onChange={(e) => setSettings({ ...settings, centerLocation: e.target.value })}
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
             />
+          </div>
+
+          {/* Require Student Photo Toggle */}
+          <div className="p-4 rounded-2xl bg-brand-50/60 dark:bg-brand-950/40 border border-brand-200/80 dark:border-brand-900/60 flex items-center justify-between sm:col-span-2 lg:col-span-3">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <Camera className="w-4 h-4 text-brand-600 dark:text-cyan-400" />
+                <span className="font-bold text-slate-900 dark:text-white text-xs">إلزام الطلاب برفع صورة شخصية عند التسجيل</span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                عند التفعيل، تظهر خانة الصورة في استمارة التسجيل وتكون إجبارية وتظهر في كارت الهوية والتليجرام. عند التعطيل تختفي تماماً ولا تُطلب.
+              </p>
+            </div>
+
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={Boolean(settings.requireStudentPhoto)}
+                onChange={(e) => setSettings({ ...settings, requireStudentPhoto: e.target.checked })}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-emerald-600"></div>
+            </label>
           </div>
         </div>
       </form>

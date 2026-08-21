@@ -75,6 +75,7 @@ const DEFAULT_SETTINGS: SystemSettings = {
   centerLocation: 'سنتر الأوائل - قاعة 1',
   telegramBotToken: '8897471175:AAH__IM1R9Ro2yYdClmtZ_X4TvzFZsr5uUs',
   telegramAdminChatId: '6602868710',
+  requireStudentPhoto: false,
 };
 
 function generateSecureId(prefix: string): string {
@@ -94,6 +95,8 @@ function studentToDb(s: Student) {
     parent_name: s.parentName,
     parent_phone: s.parentPhone,
     address: s.address || '',
+    birth_date: s.birthDate || '',
+    photo_url: s.photoUrl || '',
     academic_year: s.academicYear || 'FIRST_SEC',
     group_id: s.groupId || null,
     status: s.status || 'PENDING',
@@ -110,6 +113,8 @@ function dbToStudent(row: any): Student {
     parentName: row.parent_name,
     parentPhone: row.parent_phone,
     address: row.address || '',
+    birthDate: row.birth_date || undefined,
+    photoUrl: row.photo_url || undefined,
     academicYear: row.academic_year || 'FIRST_SEC',
     groupId: row.group_id || '',
     status: row.status || 'PENDING',
@@ -288,8 +293,9 @@ class StorageService {
           adminPasscode: settingsData.admin_passcode || DEFAULT_SETTINGS.adminPasscode,
           assistantPhone: settingsData.assistant_phone || DEFAULT_SETTINGS.assistantPhone,
           centerLocation: settingsData.center_location || DEFAULT_SETTINGS.centerLocation,
-          telegramBotToken: '',
-          telegramAdminChatId: '',
+          telegramBotToken: localData.settings?.telegramBotToken || DEFAULT_SETTINGS.telegramBotToken,
+          telegramAdminChatId: localData.settings?.telegramAdminChatId || DEFAULT_SETTINGS.telegramAdminChatId,
+          requireStudentPhoto: Boolean(settingsData.require_student_photo),
         } : (localData.settings || DEFAULT_SETTINGS),
         lastBackupDate: localData.lastBackupDate,
       };
@@ -667,6 +673,8 @@ class StorageService {
     parentName: string;
     parentPhone: string;
     address?: string;
+    birthDate?: string;
+    photoUrl?: string;
     groupId: string;
     academicYear?: any;
     status?: any;
@@ -707,6 +715,8 @@ class StorageService {
       parentName: studentData.parentName,
       parentPhone: studentData.parentPhone,
       address: studentData.address || '',
+      birthDate: studentData.birthDate || '',
+      photoUrl: studentData.photoUrl || '',
       groupId: studentData.groupId,
       academicYear: studentData.academicYear || 'FIRST_SEC',
       status: studentData.status || 'PENDING',
@@ -895,6 +905,8 @@ class StorageService {
         subscription_price: data.settings.subscriptionPrice,
         admin_passcode: data.settings.adminPasscode,
         assistant_phone: data.settings.assistantPhone,
+        center_location: data.settings.centerLocation,
+        require_student_photo: Boolean(data.settings.requireStudentPhoto),
       }, { onConflict: 'id' }).then(() => {}, (err: any) => console.warn('Supabase settings sync error:', err));
     }
     return data.settings;

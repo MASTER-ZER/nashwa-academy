@@ -14,7 +14,7 @@ function escapeHtml(text: string): string {
 const DEFAULT_BOT_TOKEN = '8897471175:AAH__IM1R9Ro2yYdClmtZ_X4TvzFZsr5uUs';
 const DEFAULT_ADMIN_CHAT_ID = '6602868710';
 
-export async function sendTelegramMessage(text: string, replyMarkup?: any): Promise<boolean> {
+function getTelegramCredentials() {
   let botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN || DEFAULT_BOT_TOKEN;
   let chatId = process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.NEXT_PUBLIC_TELEGRAM_ADMIN_CHAT_ID || DEFAULT_ADMIN_CHAT_ID;
 
@@ -25,6 +25,11 @@ export async function sendTelegramMessage(text: string, replyMarkup?: any): Prom
       if (currentSettings.telegramAdminChatId) chatId = currentSettings.telegramAdminChatId;
     } catch {}
   }
+  return { botToken, chatId };
+}
+
+export async function sendTelegramMessage(text: string, replyMarkup?: any): Promise<boolean> {
+  const { botToken, chatId } = getTelegramCredentials();
 
   try {
     const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
@@ -46,6 +51,46 @@ export async function sendTelegramMessage(text: string, replyMarkup?: any): Prom
   }
 }
 
+export async function sendTelegramPhoto(photoBase64: string, caption: string, replyMarkup?: any): Promise<boolean> {
+  const { botToken, chatId } = getTelegramCredentials();
+
+  try {
+    // If it's a data URL, convert to Blob
+    if (photoBase64.startsWith('data:image/')) {
+      const parts = photoBase64.split(';base64,');
+      const contentType = parts[0].split(':')[1];
+      const raw = window.atob(parts[1]);
+      const rawLength = raw.length;
+      const uInt8Array = new Uint8Array(rawLength);
+      for (let i = 0; i < rawLength; ++i) {
+        uInt8Array[i] = raw.charCodeAt(i);
+      }
+      const blob = new Blob([uInt8Array], { type: contentType });
+
+      const formData = new FormData();
+      formData.append('chat_id', chatId);
+      formData.append('photo', blob, 'student_photo.jpg');
+      formData.append('caption', caption);
+      formData.append('parse_mode', 'HTML');
+      if (replyMarkup) {
+        formData.append('reply_markup', JSON.stringify(replyMarkup));
+      }
+
+      const res = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await res.json();
+      if (result.ok) return true;
+    }
+  } catch (err) {
+    console.warn('sendPhoto failed, falling back to message:', err);
+  }
+
+  // Fallback to regular text message
+  return sendTelegramMessage(caption, replyMarkup);
+}
+
 export async function notifyNewStudentRegistration(student: Student, group?: Group | null) {
   const groupName = group ? group.name : 'غير محدد';
   const cleanParentPhone = student.parentPhone.replace(/\D/g, '').replace(/^0/, '20');
@@ -56,6 +101,7 @@ export async function notifyNewStudentRegistration(student: Student, group?: Gro
   const safeParentName = escapeHtml(student.parentName);
   const safeParentPhone = escapeHtml(student.parentPhone);
   const safeAddress = escapeHtml(student.address || 'غير مسجل');
+  const safeBirthDate = escapeHtml(student.birthDate || 'غير مسجل');
   const safeGroupName = escapeHtml(groupName);
 
   const messageText = `
@@ -63,6 +109,7 @@ export async function notifyNewStudentRegistration(student: Student, group?: Gro
 
 👤 <b>اسم الطالب:</b> ${safeStudentName}
 🔢 <b>الكود المقترح:</b> <code>#${safeStudentCode}</code>
+🎂 <b>تاريخ الميلاد:</b> <code>${safeBirthDate}</code>
 📞 <b>هاتف الطالب:</b> <code>${safeStudentPhone}</code>
 👨‍👦 <b>ولي الأمر:</b> ${safeParentName} (<code>${safeParentPhone}</code>)
 📍 <b>العنوان:</b> ${safeAddress}
@@ -94,6 +141,10 @@ export async function notifyNewStudentRegistration(student: Student, group?: Gro
       ],
     ],
   };
+
+  if (student.photoUrl) {
+    return sendTelegramPhoto(student.photoUrl, messageText, inlineKeyboard);
+  }
 
   return sendTelegramMessage(messageText, inlineKeyboard);
 }

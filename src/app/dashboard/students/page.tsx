@@ -1,24 +1,53 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { db } from '@/lib/storage';
 import { Student, Group, SystemData } from '@/types';
-import { Users, Search, Phone, MapPin, Edit3, Trash2, CheckCircle2, QrCode, Clock, UserPlus, X, Check } from 'lucide-react';
+import {
+  Users,
+  Search,
+  Phone,
+  MapPin,
+  Edit3,
+  Trash2,
+  CheckCircle2,
+  QrCode,
+  Clock,
+  UserPlus,
+  X,
+  Check,
+  Calendar,
+  Eye,
+  Camera,
+  MessageCircle,
+  ExternalLink,
+  DollarSign,
+  Award,
+} from 'lucide-react';
 import Link from 'next/link';
+import DateWheelPicker from '@/components/DateWheelPicker';
+import { compressStudentPhoto } from '@/lib/imageCompressor';
 
 export default function StudentsDirectoryPage() {
   const [data, setData] = useState<SystemData | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGroupFilter, setSelectedGroupFilter] = useState('ALL');
 
+  const [viewingStudent, setViewingStudent] = useState<Student | null>(null);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+  const addFileInputRef = useRef<HTMLInputElement>(null);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
+
   const [newStudentData, setNewStudentData] = useState({
     name: '',
     phone: '',
     parentName: '',
     parentPhone: '',
     address: '',
+    birthDate: '2009-05-15',
+    photoUrl: '',
     groupId: '',
   });
 
@@ -52,6 +81,9 @@ export default function StudentsDirectoryPage() {
     if (editingStudent) {
       db.updateStudent(editingStudent.id, editingStudent);
       setEditingStudent(null);
+      if (viewingStudent?.id === editingStudent.id) {
+        setViewingStudent(editingStudent);
+      }
       loadData();
     }
   };
@@ -69,6 +101,8 @@ export default function StudentsDirectoryPage() {
       parentName: newStudentData.parentName.trim() || 'ولي الأمر',
       parentPhone: newStudentData.parentPhone.trim() || newStudentData.phone.trim(),
       address: newStudentData.address.trim() || 'المنصورة',
+      birthDate: newStudentData.birthDate || '2009-05-15',
+      photoUrl: newStudentData.photoUrl || '',
       academicYear: 'FIRST_SEC',
       groupId: newStudentData.groupId || (data.groups[0]?.id || 'grp-1'),
     });
@@ -77,13 +111,23 @@ export default function StudentsDirectoryPage() {
     db.approveStudent(std.id);
 
     setIsAddModalOpen(false);
-    setNewStudentData({ name: '', phone: '', parentName: '', parentPhone: '', address: '', groupId: '' });
+    setNewStudentData({
+      name: '',
+      phone: '',
+      parentName: '',
+      parentPhone: '',
+      address: '',
+      birthDate: '2009-05-15',
+      photoUrl: '',
+      groupId: '',
+    });
     loadData();
   };
 
   const handleDelete = (id: string, name: string) => {
     if (confirm(`هل أنت متأكد من حذف الطالب (${name}) نهائياً؟`)) {
       db.rejectStudent(id);
+      if (viewingStudent?.id === id) setViewingStudent(null);
       loadData();
     }
   };
@@ -98,7 +142,7 @@ export default function StudentsDirectoryPage() {
             دليل وإدارة الطلاب ({data.students.length})
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            عرض وتعديل بيانات طلاب الصف الأول الثانوي ونقل المجموعات
+            عرض وتعديل بيانات وصور وتواريخ ميلاد طلاب الصف الأول الثانوي
           </p>
         </div>
 
@@ -144,7 +188,7 @@ export default function StudentsDirectoryPage() {
           <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
           <input
             type="text"
-            placeholder="بحث باسم الطالب، الكود، أو رقم الهاتف..."
+            placeholder="بحث باسم الطالب، الكود، تاريخ الميلاد، أو رقم الهاتف..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pr-9 pl-3.5 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
@@ -165,14 +209,15 @@ export default function StudentsDirectoryPage() {
         </select>
       </div>
 
-      {/* Desktop Table View (Hidden on mobile) */}
+      {/* Desktop Table View */}
       <div className="hidden md:block liquid-glass rounded-3xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-right text-xs">
             <thead className="bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-bold">
               <tr>
+                <th className="p-4">الطالب</th>
                 <th className="p-4">الكود</th>
-                <th className="p-4">اسم الطالب</th>
+                <th className="p-4">تاريخ الميلاد</th>
                 <th className="p-4">هاتف الطالب</th>
                 <th className="p-4">ولي الأمر</th>
                 <th className="p-4">المجموعة</th>
@@ -183,7 +228,7 @@ export default function StudentsDirectoryPage() {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
               {filteredStudents.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-400 font-semibold">
+                  <td colSpan={8} className="p-8 text-center text-slate-400 font-semibold">
                     لا يوجد طلاب مطابقين للبحث
                   </td>
                 </tr>
@@ -192,8 +237,37 @@ export default function StudentsDirectoryPage() {
                   const grp = data.groups.find((g) => g.id === std.groupId);
                   return (
                     <tr key={std.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition">
+                      <td className="p-4 font-bold text-slate-900 dark:text-white">
+                        <div className="flex items-center gap-2.5">
+                          {std.photoUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={std.photoUrl}
+                              alt={std.name}
+                              className="w-8 h-8 rounded-full object-cover border border-cyan-500 shadow-2xs shrink-0"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center font-bold text-[11px] shrink-0">
+                              {std.name.slice(0, 1)}
+                            </div>
+                          )}
+                          <div>
+                            <p className="font-bold text-slate-900 dark:text-white">{std.name}</p>
+                            <p className="text-[10px] text-slate-400">{std.address || 'المنصورة'}</p>
+                          </div>
+                        </div>
+                      </td>
                       <td className="p-4 font-mono font-black text-brand-700 dark:text-cyan-400">#{std.code}</td>
-                      <td className="p-4 font-bold text-slate-900 dark:text-white">{std.name}</td>
+                      <td className="p-4 font-mono text-slate-600 dark:text-slate-300">
+                        {std.birthDate ? (
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3.5 h-3.5 text-cyan-500" />
+                            {std.birthDate}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
                       <td className="p-4 font-mono" dir="ltr">{std.phone}</td>
                       <td className="p-4">
                         <div className="font-semibold text-slate-800 dark:text-slate-200">{std.parentName}</div>
@@ -214,6 +288,13 @@ export default function StudentsDirectoryPage() {
                         </span>
                       </td>
                       <td className="p-4 text-center space-x-1 space-x-reverse">
+                        <button
+                          onClick={() => setViewingStudent(std)}
+                          className="p-1.5 rounded-lg bg-cyan-50 dark:bg-cyan-950/60 hover:bg-cyan-100 text-cyan-700 dark:text-cyan-300 transition"
+                          title="عرض الملف والبيانات الكاملة"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
                         <button
                           onClick={() => setEditingStudent(std)}
                           className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-brand-50 text-slate-600 dark:text-slate-300 hover:text-brand-600 transition"
@@ -238,7 +319,7 @@ export default function StudentsDirectoryPage() {
         </div>
       </div>
 
-      {/* Mobile Student Cards View (Shown only on phones) */}
+      {/* Mobile Student Cards View */}
       <div className="md:hidden space-y-3">
         {filteredStudents.length === 0 ? (
           <div className="p-8 text-center text-slate-400 liquid-glass rounded-2xl">لا يوجد طلاب مطابقين للبحث</div>
@@ -248,13 +329,22 @@ export default function StudentsDirectoryPage() {
             return (
               <div
                 key={std.id}
-                className="p-4 rounded-2xl liquid-glass space-y-2.5 shadow-xs"
+                className="p-4 rounded-2xl liquid-glass space-y-3 shadow-xs"
               >
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-8 h-8 rounded-xl bg-brand-50 dark:bg-brand-950 text-brand-600 dark:text-cyan-400 font-mono font-black text-xs flex items-center justify-center">
-                      #{std.code}
-                    </span>
+                  <div className="flex items-center gap-2.5">
+                    {std.photoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={std.photoUrl}
+                        alt={std.name}
+                        className="w-10 h-10 rounded-2xl object-cover border border-cyan-500 shadow-2xs shrink-0"
+                      />
+                    ) : (
+                      <span className="w-10 h-10 rounded-2xl bg-brand-50 dark:bg-brand-950 text-brand-600 dark:text-cyan-400 font-mono font-black text-xs flex items-center justify-center">
+                        #{std.code}
+                      </span>
+                    )}
                     <div>
                       <h4 className="font-bold text-slate-900 dark:text-white text-xs">{std.name}</h4>
                       <p className="text-[10px] text-slate-500 dark:text-slate-400">{grp ? grp.name : '—'}</p>
@@ -272,31 +362,45 @@ export default function StudentsDirectoryPage() {
                   </span>
                 </div>
 
-                <div className="text-[11px] text-slate-600 dark:text-slate-400 space-y-0.5 border-t border-slate-100 dark:border-slate-800 pt-2">
+                <div className="text-[11px] text-slate-600 dark:text-slate-400 space-y-1 border-t border-slate-100 dark:border-slate-800 pt-2">
+                  {std.birthDate && (
+                    <div className="flex justify-between">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3 text-cyan-500" />
+                        الميلاد:
+                      </span>
+                      <span className="font-mono font-bold text-slate-900 dark:text-white">{std.birthDate}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span>هاتف الطالب:</span>
                     <span className="font-mono text-slate-900 dark:text-white" dir="ltr">{std.phone}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>ولي الأمر ({std.parentName}):</span>
+                    <span>ولي الأمر:</span>
                     <span className="font-mono text-slate-900 dark:text-white" dir="ltr">{std.parentPhone}</span>
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    onClick={() => setViewingStudent(std)}
+                    className="flex-1 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold flex items-center justify-center gap-1"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    عرض الملف
+                  </button>
                   <button
                     onClick={() => setEditingStudent(std)}
-                    className="px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold flex items-center gap-1"
+                    className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold"
                   >
-                    <Edit3 className="w-3 h-3" />
-                    تعديل
+                    <Edit3 className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={() => handleDelete(std.id, std.name)}
-                    className="px-3 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-1"
+                    className="px-3 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 text-xs font-bold"
                   >
-                    <Trash2 className="w-3 h-3" />
-                    حذف
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
@@ -305,26 +409,191 @@ export default function StudentsDirectoryPage() {
         )}
       </div>
 
-      {/* Add Student Modal */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h2 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <UserPlus className="w-5 h-5 text-emerald-600" />
-                إضافة طالب جديد واعتماده فورياً
-              </h2>
-              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+      {/* FULL STUDENT PROFILE MODAL */}
+      {viewingStudent && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="liquid-glass rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-5 border border-cyan-500/30 animate-ios-spring max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-200/50 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-8 h-8 rounded-xl bg-cyan-50 dark:bg-cyan-950 text-cyan-600 dark:text-cyan-400 flex items-center justify-center font-mono font-black text-xs">
+                  #{viewingStudent.code}
+                </span>
+                <h3 className="font-black text-slate-900 dark:text-white text-base">الملف الكامل للطالب</h3>
+              </div>
+              <button
+                onClick={() => setViewingStudent(null)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleAddStudent} className="space-y-3 text-xs">
+            {/* Profile Avatar & Quick Details */}
+            <div className="flex flex-col sm:flex-row items-center gap-4 p-4 rounded-2xl bg-white/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+              {viewingStudent.photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={viewingStudent.photoUrl}
+                  alt={viewingStudent.name}
+                  className="w-20 h-20 rounded-2xl object-cover border-2 border-cyan-500 shadow-md shrink-0"
+                />
+              ) : (
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-brand-600 to-cyan-500 text-white flex items-center justify-center font-black text-2xl shadow-md shrink-0">
+                  #{viewingStudent.code}
+                </div>
+              )}
+              <div className="text-center sm:text-right space-y-1 flex-1">
+                <h4 className="font-black text-slate-900 dark:text-white text-base">{viewingStudent.name}</h4>
+                <p className="text-xs text-brand-600 dark:text-cyan-400 font-bold">
+                  {data.groups.find((g) => g.id === viewingStudent.groupId)?.name || 'غير محدد'}
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-center sm:justify-start gap-1">
+                  <MapPin className="w-3 h-3 text-rose-500" />
+                  <span>{viewingStudent.address || 'المنصورة'}</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Grid of full metadata */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              {/* Birth Date */}
+              <div className="p-3.5 rounded-2xl bg-white/60 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 space-y-1">
+                <span className="text-slate-400 flex items-center gap-1 font-semibold">
+                  <Calendar className="w-3.5 h-3.5 text-cyan-500" />
+                  تاريخ الميلاد:
+                </span>
+                <p className="font-mono font-black text-slate-900 dark:text-white text-sm">
+                  {viewingStudent.birthDate || 'غير مسجل'}
+                </p>
+              </div>
+
+              {/* Status */}
+              <div className="p-3.5 rounded-2xl bg-white/60 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 space-y-1">
+                <span className="text-slate-400 font-semibold">حالة الاعتماد:</span>
+                <p className="font-bold text-emerald-600 dark:text-emerald-400 text-sm">
+                  {viewingStudent.status === 'ACTIVE' ? 'طالب معتمد ونشط ✅' : 'قيد الانتظار ⏳'}
+                </p>
+              </div>
+
+              {/* Student Phone */}
+              <div className="p-3.5 rounded-2xl bg-white/60 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 space-y-2">
+                <span className="text-slate-400 flex items-center gap-1 font-semibold">
+                  <Phone className="w-3.5 h-3.5 text-brand-500" />
+                  هاتف الطالب (واتساب):
+                </span>
+                <p className="font-mono font-black text-slate-900 dark:text-white" dir="ltr">{viewingStudent.phone}</p>
+                <div className="flex gap-1.5">
+                  <a
+                    href={`https://wa.me/2${viewingStudent.phone.replace(/\D/g, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] flex items-center justify-center gap-1"
+                  >
+                    <MessageCircle className="w-3 h-3" />
+                    واتساب
+                  </a>
+                  <a
+                    href={`tel:${viewingStudent.phone}`}
+                    className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-[10px] flex items-center justify-center"
+                  >
+                    اتصال
+                  </a>
+                </div>
+              </div>
+
+              {/* Parent Phone */}
+              <div className="p-3.5 rounded-2xl bg-white/60 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 space-y-2">
+                <span className="text-slate-400 flex items-center gap-1 font-semibold">
+                  <Phone className="w-3.5 h-3.5 text-emerald-500" />
+                  ولي الأمر ({viewingStudent.parentName}):
+                </span>
+                <p className="font-mono font-black text-slate-900 dark:text-white" dir="ltr">{viewingStudent.parentPhone}</p>
+                <div className="flex gap-1.5">
+                  <a
+                    href={`https://wa.me/2${viewingStudent.parentPhone.replace(/\D/g, '')}?text=${encodeURIComponent(
+                      `أهلاً بحضرتك أستاذ ${viewingStudent.parentName}، من أكاديمية مس نشوى للعلوم المتكاملة 🌸`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] flex items-center justify-center gap-1"
+                  >
+                    <MessageCircle className="w-3 h-3" />
+                    واتساب
+                  </a>
+                  <a
+                    href={`tel:${viewingStudent.parentPhone}`}
+                    className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-[10px] flex items-center justify-center"
+                  >
+                    اتصال
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {/* Attendance & Exams Stats */}
+            <div className="p-4 rounded-2xl bg-brand-50/50 dark:bg-brand-950/40 border border-brand-200/60 dark:border-brand-900/50 grid grid-cols-2 gap-3 text-xs text-center">
+              <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80">
+                <span className="text-[10px] text-slate-400 block">مرات الحضور المسجلة</span>
+                <span className="text-lg font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                  {data.attendance.filter((a) => a.studentId === viewingStudent.id).length} حصص
+                </span>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80">
+                <span className="text-[10px] text-slate-400 block">حالة اشتراك الشهر</span>
+                <span className="text-lg font-black text-brand-600 dark:text-cyan-400">
+                  {data.subscriptions.some((s) => s.studentId === viewingStudent.id && s.isPaid) ? 'مسدد ✅' : 'مستحق ⏳'}
+                </span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 pt-2 border-t border-slate-200/50 dark:border-slate-800">
+              <Link
+                href="/dashboard/print-cards"
+                className="flex-1 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <QrCode className="w-3.5 h-3.5 text-cyan-400" />
+                <span>طباعة الكارت</span>
+              </Link>
+
+              <button
+                onClick={() => {
+                  setEditingStudent(viewingStudent);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>تعديل</span>
+              </button>
+
+              <button
+                onClick={() => handleDelete(viewingStudent.id, viewingStudent.name)}
+                className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>حذف</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Student Modal */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <UserPlus className="w-5 h-5 text-emerald-500" />
+              إضافة طالب جديد
+            </h2>
+
+            <form onSubmit={handleAddStudent} className="space-y-3.5 text-xs">
               <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">اسم الطالب بالكامل *</label>
+                <label className="font-bold text-slate-700 dark:text-slate-300">اسم الطالب ثلاثياً</label>
                 <input
                   type="text"
-                  placeholder="مثال: محمد أحمد علي"
+                  placeholder="مثال: أحمد علي محمود"
                   value={newStudentData.name}
                   onChange={(e) => setNewStudentData({ ...newStudentData, name: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
@@ -332,9 +601,9 @@ export default function StudentsDirectoryPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-700 dark:text-slate-300">هاتف الطالب *</label>
+                  <label className="font-bold text-slate-700 dark:text-slate-300">هاتف الطالب</label>
                   <input
                     type="tel"
                     dir="ltr"
@@ -363,10 +632,86 @@ export default function StudentsDirectoryPage() {
                 <label className="font-bold text-slate-700 dark:text-slate-300">اسم ولي الأمر</label>
                 <input
                   type="text"
-                  placeholder="مثال: أحمد علي"
+                  placeholder="مثال: علي محمود"
                   value={newStudentData.parentName}
                   onChange={(e) => setNewStudentData({ ...newStudentData, parentName: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 dark:text-slate-300">العنوان / المنطقة</label>
+                <input
+                  type="text"
+                  placeholder="مثال: المنصورة - شارع الجيش"
+                  value={newStudentData.address}
+                  onChange={(e) => setNewStudentData({ ...newStudentData, address: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                />
+              </div>
+
+              {/* Date Wheel Picker */}
+              <DateWheelPicker
+                value={newStudentData.birthDate}
+                onChange={(val) => setNewStudentData({ ...newStudentData, birthDate: val })}
+                label="تاريخ الميلاد (بكرة تفاعلية)"
+              />
+
+              {/* Photo Upload in Add Modal */}
+              <div className="space-y-1.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Camera className="w-3.5 h-3.5 text-cyan-500" />
+                    صورة الطالب (اختياري):
+                  </span>
+                  {newStudentData.photoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setNewStudentData({ ...newStudentData, photoUrl: '' })}
+                      className="text-[10px] text-rose-500 font-bold"
+                    >
+                      إزالة الصورة
+                    </button>
+                  )}
+                </label>
+
+                {newStudentData.photoUrl ? (
+                  <div className="flex items-center gap-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={newStudentData.photoUrl}
+                      alt="Student"
+                      className="w-12 h-12 rounded-xl object-cover border border-emerald-500"
+                    />
+                    <span className="text-[11px] text-emerald-600 font-bold">تم اختيار الصورة بنجاح ✅</span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => addFileInputRef.current?.click()}
+                    className="w-full py-2.5 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold text-xs flex items-center justify-center gap-1.5"
+                  >
+                    <Camera className="w-4 h-4 text-cyan-500" />
+                    <span>{isProcessingPhoto ? 'جاري المعالجة...' : 'رفع صورة الطالب 📸'}</span>
+                  </button>
+                )}
+                <input
+                  ref={addFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setIsProcessingPhoto(true);
+                      try {
+                        const compressed = await compressStudentPhoto(file);
+                        setNewStudentData((prev) => ({ ...prev, photoUrl: compressed }));
+                      } finally {
+                        setIsProcessingPhoto(false);
+                      }
+                    }
+                  }}
+                  className="hidden"
                 />
               </div>
 
@@ -408,10 +753,10 @@ export default function StudentsDirectoryPage() {
       {/* Edit Student Modal */}
       {editingStudent && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-bold text-slate-900 dark:text-white">تعديل بيانات الطالب #{editingStudent.code}</h2>
 
-            <form onSubmit={handleUpdateStudent} className="space-y-3 text-xs">
+            <form onSubmit={handleUpdateStudent} className="space-y-3.5 text-xs">
               <div className="space-y-1">
                 <label className="font-bold text-slate-700 dark:text-slate-300">اسم الطالب</label>
                 <input
@@ -422,15 +767,28 @@ export default function StudentsDirectoryPage() {
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">هاتف الطالب</label>
-                <input
-                  type="tel"
-                  dir="ltr"
-                  value={editingStudent.phone}
-                  onChange={(e) => setEditingStudent({ ...editingStudent, phone: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 dark:text-slate-300">هاتف الطالب</label>
+                  <input
+                    type="tel"
+                    dir="ltr"
+                    value={editingStudent.phone}
+                    onChange={(e) => setEditingStudent({ ...editingStudent, phone: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 dark:text-slate-300">هاتف ولي الأمر</label>
+                  <input
+                    type="tel"
+                    dir="ltr"
+                    value={editingStudent.parentPhone}
+                    onChange={(e) => setEditingStudent({ ...editingStudent, parentPhone: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                  />
+                </div>
               </div>
 
               <div className="space-y-1">
@@ -444,13 +802,83 @@ export default function StudentsDirectoryPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">هاتف ولي الأمر</label>
+                <label className="font-bold text-slate-700 dark:text-slate-300">العنوان / المنطقة</label>
                 <input
-                  type="tel"
-                  dir="ltr"
-                  value={editingStudent.parentPhone}
-                  onChange={(e) => setEditingStudent({ ...editingStudent, parentPhone: e.target.value })}
+                  type="text"
+                  value={editingStudent.address || ''}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, address: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+                />
+              </div>
+
+              {/* Date Wheel Picker in Edit Modal */}
+              <DateWheelPicker
+                value={editingStudent.birthDate || '2009-05-15'}
+                onChange={(val) => setEditingStudent({ ...editingStudent, birthDate: val })}
+                label="تاريخ الميلاد (بكرة تفاعلية)"
+              />
+
+              {/* Photo Upload in Edit Modal */}
+              <div className="space-y-1.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Camera className="w-3.5 h-3.5 text-cyan-500" />
+                    تحديث صورة الطالب:
+                  </span>
+                  {editingStudent.photoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setEditingStudent({ ...editingStudent, photoUrl: '' })}
+                      className="text-[10px] text-rose-500 font-bold"
+                    >
+                      إزالة الصورة
+                    </button>
+                  )}
+                </label>
+
+                {editingStudent.photoUrl ? (
+                  <div className="flex items-center gap-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={editingStudent.photoUrl}
+                      alt="Student"
+                      className="w-14 h-14 rounded-2xl object-cover border-2 border-cyan-500 shadow-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => editFileInputRef.current?.click()}
+                      className="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-700 text-xs font-bold text-slate-800 dark:text-white"
+                    >
+                      تغيير الصورة 📸
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => editFileInputRef.current?.click()}
+                    className="w-full py-2.5 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold text-xs flex items-center justify-center gap-1.5"
+                  >
+                    <Camera className="w-4 h-4 text-cyan-500" />
+                    <span>{isProcessingPhoto ? 'جاري المعالجة...' : 'رفع صورة الطالب 📸'}</span>
+                  </button>
+                )}
+                <input
+                  ref={editFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setIsProcessingPhoto(true);
+                      try {
+                        const compressed = await compressStudentPhoto(file);
+                        setEditingStudent((prev) => (prev ? { ...prev, photoUrl: compressed } : null));
+                      } finally {
+                        setIsProcessingPhoto(false);
+                      }
+                    }
+                  }}
+                  className="hidden"
                 />
               </div>
 

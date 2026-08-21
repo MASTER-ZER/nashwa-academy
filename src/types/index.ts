@@ -19,6 +19,8 @@ export interface Student {
   parentName: string; // e.g. "محمد نجاح"
   parentPhone: string; // e.g. "01187654321"
   address: string; // e.g. "شارع الجمهورية - المنصورة"
+  birthDate?: string; // e.g. "2009-05-14"
+  photoUrl?: string; // Base64 or Image URL
   academicYear: AcademicYear;
   groupId: string;
   status: StudentStatus;
@@ -86,6 +88,7 @@ export interface SystemSettings {
   centerLocation: string;
   telegramBotToken: string;
   telegramAdminChatId: string;
+  requireStudentPhoto?: boolean;
 }
 
 export interface SystemData {
