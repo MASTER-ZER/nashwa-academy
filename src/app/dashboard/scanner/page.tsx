@@ -11,25 +11,23 @@ import {
   CheckCircle2, 
   AlertCircle, 
   Clock, 
-  User, 
   DollarSign, 
   RefreshCw, 
-  Info, 
+  RotateCcw, 
+  Check, 
+  Zap, 
+  AlertTriangle, 
+  Radio, 
+  XCircle, 
+  Barcode, 
+  Keyboard,
+  Flashlight,
+  Maximize2,
+  Minimize2,
   Sparkles,
-  RotateCcw,
-  ShieldCheck,
-  Check,
-  Zap,
-  Volume2,
-  Calendar,
-  Layers,
-  UserCheck,
-  AlertTriangle,
-  Radio,
-  XCircle,
-  HelpCircle,
-  Barcode,
-  Keyboard
+  Smartphone,
+  Eye,
+  CheckCheck
 } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import confetti from 'canvas-confetti';
@@ -51,13 +49,17 @@ export default function ScannerPage() {
   const [selectedGroupId, setSelectedGroupId] = useState<string>('');
   const [students, setStudents] = useState<Student[]>([]);
 
-  // Camera state
+  // Camera & Device hardware states
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string>('');
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  const [isTorchOn, setIsTorchOn] = useState<boolean>(false);
+  const [isStandMode, setIsStandMode] = useState<boolean>(false);
+  const [wakeLockActive, setWakeLockActive] = useState<boolean>(false);
 
   // Scanner feedback overlay
   const [scanResult, setScanResult] = useState<ScanResultOverlay | null>(null);
+  const [autoDismissTimer, setAutoDismissTimer] = useState<number>(0);
   const [recentScans, setRecentScans] = useState<{
     student: Student;
     time: string;
@@ -74,8 +76,47 @@ export default function ScannerPage() {
   const [hardwareScanToast, setHardwareScanToast] = useState(false);
 
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
+  const wakeLockRef = useRef<any>(null);
   const lastScannedCodeRef = useRef<string>('');
   const lastScanTimeRef = useRef<number>(0);
+  const dismissTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 1. Keep Screen Awake on Stand (Screen Wake Lock API)
+  const requestWakeLock = async () => {
+    if ('wakeLock' in navigator) {
+      try {
+        wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+        setWakeLockActive(true);
+        wakeLockRef.current.addEventListener('release', () => {
+          setWakeLockActive(false);
+        });
+      } catch {
+        setWakeLockActive(false);
+      }
+    }
+  };
+
+  const releaseWakeLock = () => {
+    if (wakeLockRef.current) {
+      wakeLockRef.current.release().catch(() => {});
+      wakeLockRef.current = null;
+      setWakeLockActive(false);
+    }
+  };
+
+  useEffect(() => {
+    requestWakeLock();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isCameraActive) {
+        requestWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      releaseWakeLock();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isCameraActive]);
 
   // Sync today's attendance into recentScans
   const syncSessionAttendance = useCallback((groupId: string) => {
@@ -138,6 +179,12 @@ export default function ScannerPage() {
         if (event.payload?.type === 'SUCCESS_PAID') sound.playSuccessChime();
         else if (event.payload?.type === 'SUCCESS_UNPAID' || event.payload?.type === 'DIFFERENT_GROUP') sound.playWarningAlert();
         else if (event.payload?.type === 'ALREADY_RECORDED') sound.playInfoSound();
+
+        // Auto-dismiss popup after 3 seconds on stand
+        if (dismissTimeoutRef.current) clearTimeout(dismissTimeoutRef.current);
+        dismissTimeoutRef.current = setTimeout(() => {
+          setScanResult(null);
+        }, 3500);
       } else if (event.type === 'PAYMENT_COLLECTED' && event.payload) {
         setScanResult(event.payload.updatedOverlay || null);
         sound.playSuccessChime();
@@ -165,6 +212,7 @@ export default function ScannerPage() {
     return () => {
       unsubscribeBus();
       clearInterval(syncInterval);
+      if (dismissTimeoutRef.current) clearTimeout(dismissTimeoutRef.current);
     };
   }, [selectedGroupId, syncSessionAttendance]);
 
@@ -175,7 +223,7 @@ export default function ScannerPage() {
     setScanResult(null);
   };
 
-  // Core scan processor
+  // Core scan processor - Continuous & Non-Blocking for real-world stand queue
   const processCode = useCallback((rawCode: string, forceMakeup = false) => {
     const cleanCode = rawCode.trim();
     if (!cleanCode) return;
@@ -242,7 +290,7 @@ export default function ScannerPage() {
       if (result.subscriptionPaid) {
         sound.playSuccessChime();
         try {
-          confetti({ particleCount: 45, spread: 55, origin: { y: 0.5 } });
+          confetti({ particleCount: 40, spread: 50, origin: { y: 0.6 } });
         } catch {}
       } else {
         sound.playWarningAlert();
@@ -271,6 +319,12 @@ export default function ScannerPage() {
     }
 
     setScanResult(overlayData);
+
+    // Auto-clear overlay after 3 seconds so screen is fresh for next student
+    if (dismissTimeoutRef.current) clearTimeout(dismissTimeoutRef.current);
+    dismissTimeoutRef.current = setTimeout(() => {
+      setScanResult(null);
+    }, 3500);
 
     // Broadcast in real-time to Laptop / other connected screens
     db.broadcastKioskEvent({
@@ -302,8 +356,7 @@ export default function ScannerPage() {
           if (!isInputActive) e.preventDefault();
         }
       } else if (e.key.length === 1) {
-        // Reset buffer if human typing with long pause (> 150ms)
-        if (timeDiff > 150 && !isInputActive) {
+        if (timeDiff > 140 && !isInputActive) {
           barcodeBuffer = '';
         }
         if (!isInputActive) {
@@ -316,9 +369,10 @@ export default function ScannerPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [processCode]);
 
-  // Start Camera with Wide-Spectrum Hardware Barcode Acceleration
+  // Start Camera with High-Speed Hardware Accelerated Barcode Decoding
   const startCamera = async () => {
     sound.unlockAudio();
+    requestWakeLock();
     setCameraError('');
     setIsCameraActive(true);
 
@@ -378,6 +432,7 @@ export default function ScannerPage() {
       }
       setIsCameraActive(false);
     }
+    releaseWakeLock();
   };
 
   // Toggle Camera Front / Back
@@ -389,6 +444,22 @@ export default function ScannerPage() {
     }, 300);
   };
 
+  // Toggle Camera Flashlight (Torch)
+  const toggleTorch = async () => {
+    if (html5QrCodeRef.current && isCameraActive) {
+      try {
+        const nextState = !isTorchOn;
+        await html5QrCodeRef.current.applyVideoConstraints({
+          // @ts-ignore
+          advanced: [{ torch: nextState }],
+        });
+        setIsTorchOn(nextState);
+      } catch {
+        alert('الفلاش غير مدعوم في هذا المتصفح أو الكاميرا');
+      }
+    }
+  };
+
   // Cleanup camera on unmount
   useEffect(() => {
     return () => {
@@ -397,6 +468,7 @@ export default function ScannerPage() {
           html5QrCodeRef.current.stop().catch(() => {});
         } catch {}
       }
+      releaseWakeLock();
     };
   }, []);
 
@@ -427,7 +499,7 @@ export default function ScannerPage() {
     db.toggleSubscription(studentId, curMonth, 'مس نشوى');
     sound.playSuccessChime();
     try {
-      confetti({ particleCount: 50, spread: 60 });
+      confetti({ particleCount: 40, spread: 50 });
     } catch {}
 
     const updatedOverlay: ScanResultOverlay | null = scanResult
@@ -475,31 +547,32 @@ export default function ScannerPage() {
   const attendedCount = recentScans.length;
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto py-2">
+    <div className={`space-y-4 max-w-6xl mx-auto py-1 ${isStandMode ? 'fixed inset-0 z-50 bg-slate-950 p-3 overflow-y-auto' : ''}`}>
       {/* Top Bar: Group Selector & Live Sync Indicator */}
-      <div className="liquid-glass rounded-3xl p-4 sm:p-6 shadow-sm border border-slate-200 dark:border-cyan-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="liquid-glass rounded-3xl p-4 sm:p-5 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-50 dark:bg-cyan-950/70 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800 text-xs font-bold">
-              <QrCode className="w-3.5 h-3.5 text-cyan-500" />
-              <span>كشك الحضور والاسكانر الفوري</span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-black">
+              <QrCode className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>كشك الحضور والاسكانر</span>
             </span>
 
             {/* Live Sync Badge between Mobile and Laptop */}
-            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black border transition-all ${
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black border transition-all ${
               liveSyncPulse 
-                ? 'bg-emerald-500 text-white border-emerald-400 scale-105' 
-                : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                ? 'bg-emerald-600 text-white border-emerald-500 scale-105' 
+                : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-500/30'
             }`}>
-              <Radio className="w-3 h-3 animate-pulse" />
-              <span>المزامنة اللحظية نشطة (موبايل + لابتوب)</span>
+              <Radio className="w-3 h-3 animate-pulse text-emerald-500 dark:text-emerald-300" />
+              <span>مزامنة سحابية لحظية (موبايل + لابتوب)</span>
             </span>
 
-            {/* Hardware Laser Scanner Ready Tag */}
-            <span className="hidden md:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-              <Keyboard className="w-3 h-3 text-brand-500" />
-              <span>مسدس الباركود USB مدعوم تلقائياً ⚡</span>
-            </span>
+            {wakeLockActive && (
+              <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                <Smartphone className="w-3 h-3 text-amber-600" />
+                <span>الشاشة مضاءة دائماً (مانع القفل نشط 💡)</span>
+              </span>
+            )}
           </div>
 
           <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -512,7 +585,7 @@ export default function ScannerPage() {
           <select
             value={selectedGroupId}
             onChange={(e) => handleGroupChange(e.target.value)}
-            className="flex-1 sm:flex-initial px-3.5 py-2.5 text-xs font-bold rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500 shadow-xs"
+            className="flex-1 sm:flex-initial px-3.5 py-2.5 text-xs font-bold rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand-500 shadow-2xs"
           >
             {groups.map((grp) => (
               <option key={grp.id} value={grp.id}>
@@ -521,13 +594,27 @@ export default function ScannerPage() {
             ))}
           </select>
 
+          {/* Stand Mode Fullscreen Toggle */}
+          <button
+            onClick={() => setIsStandMode(!isStandMode)}
+            className={`px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center gap-1.5 border shadow-2xs ${
+              isStandMode
+                ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
+                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-slate-50'
+            }`}
+            title="وضع الستاند الكامل للموبايل"
+          >
+            {isStandMode ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5 text-brand-600 dark:text-cyan-400" />}
+            <span>{isStandMode ? 'خروج من الستاند' : 'وضع الستاند 📱'}</span>
+          </button>
+
           <button
             onClick={handleResetSession}
-            className="px-3.5 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-700 dark:text-slate-300 hover:text-rose-600 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
+            className="px-3 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-700 dark:text-slate-300 hover:text-rose-600 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
             title="إعادة تعيين حضور الحصة"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">تصفير الحصة</span>
+            <span className="hidden sm:inline">تصفير</span>
           </button>
         </div>
       </div>
@@ -546,43 +633,55 @@ export default function ScannerPage() {
       )}
 
       {/* Main Grid: Left Scanner Feed & Right Live Log */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* LEFT COLUMN: Camera & Scan Area (7 Cols) */}
         <div className="lg:col-span-7 space-y-4">
-          <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-200 dark:border-slate-800 space-y-4">
+          <div className="liquid-glass rounded-3xl p-4 sm:p-5 shadow-xs border border-slate-200/80 dark:border-slate-800 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-cyan-500/10 text-cyan-500 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
                   <Camera className="w-4 h-4" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-bold text-slate-900 dark:text-white">عين الكاميرا الذكية</h2>
-                  <p className="text-[11px] text-slate-400">وجه باركود كارت الطالب أمام العدسة</p>
+                  <h2 className="text-sm font-black text-slate-900 dark:text-white">عين الكاميرا الذكية</h2>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">وجه كارت الطالب أمام الكاميرا للمسح التلقائي المستمر</p>
                 </div>
               </div>
 
               {/* Camera Controls */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 {isCameraActive && (
-                  <button
-                    onClick={toggleFacingMode}
-                    className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-xs font-bold transition flex items-center gap-1"
-                    title="تبديل الكاميرا (أمامية / خلفية)"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  </button>
+                  <>
+                    <button
+                      onClick={toggleTorch}
+                      className={`p-2 rounded-xl text-xs font-bold transition flex items-center gap-1 ${
+                        isTorchOn ? 'bg-amber-500 text-slate-950' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                      }`}
+                      title="تشغيل / إطفاء الفلاش"
+                    >
+                      <Flashlight className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                      onClick={toggleFacingMode}
+                      className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-xs font-bold transition flex items-center gap-1"
+                      title="تبديل الكاميرا (أمامية / خلفية)"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                  </>
                 )}
 
                 <button
                   onClick={isCameraActive ? stopCamera : startCamera}
-                  className={`px-4 py-2 rounded-2xl text-xs font-black transition flex items-center gap-1.5 active:scale-95 shadow-md ${
+                  className={`px-4 py-2 rounded-2xl text-xs font-black transition flex items-center gap-1.5 active:scale-95 shadow-xs ${
                     isCameraActive
-                      ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-rose-500/20'
-                      : 'bg-gradient-to-r from-brand-600 to-cyan-500 hover:from-brand-500 text-white shadow-brand-600/25'
+                      ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                      : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white shadow-emerald-600/20'
                   }`}
                 >
                   <Camera className="w-3.5 h-3.5" />
-                  <span>{isCameraActive ? 'إيقاف الكاميرا ⏹️' : 'تشغيل الكاميرا 📷'}</span>
+                  <span>{isCameraActive ? 'إيقاف ⏹️' : 'تشغيل الكاميرا 📷'}</span>
                 </button>
               </div>
             </div>
@@ -595,23 +694,71 @@ export default function ScannerPage() {
             )}
 
             {/* Video Viewfinder Container */}
-            <div className="relative rounded-2xl overflow-hidden bg-slate-950 min-h-[290px] flex items-center justify-center border border-slate-800 shadow-inner">
+            <div className={`relative rounded-2xl overflow-hidden bg-slate-950 flex items-center justify-center border border-slate-800 shadow-inner ${isStandMode ? 'min-h-[380px]' : 'min-h-[290px]'}`}>
               <div id="qr-reader-target" className="w-full h-full min-h-[290px]" />
+
+              {/* Floating Quick Scan Overlay Banner on top of Camera */}
+              {scanResult && isCameraActive && (
+                <div className="absolute top-3 inset-x-3 z-30 animate-ios-spring">
+                  <div className={`p-4 rounded-2xl border-2 shadow-2xl backdrop-blur-md text-white flex items-center justify-between gap-3 ${
+                    scanResult.type === 'SUCCESS_PAID'
+                      ? 'bg-emerald-950/90 border-emerald-500 shadow-emerald-500/30'
+                      : scanResult.type === 'SUCCESS_UNPAID'
+                      ? 'bg-rose-950/90 border-rose-500 shadow-rose-500/30'
+                      : scanResult.type === 'ALREADY_RECORDED'
+                      ? 'bg-blue-950/90 border-blue-500 shadow-blue-500/30'
+                      : scanResult.type === 'DIFFERENT_GROUP'
+                      ? 'bg-amber-950/90 border-amber-500 shadow-amber-500/30'
+                      : 'bg-slate-900/90 border-slate-700'
+                  }`}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
+                        {scanResult.type === 'SUCCESS_PAID' && <CheckCircle2 className="w-6 h-6 text-emerald-400" />}
+                        {scanResult.type === 'SUCCESS_UNPAID' && <AlertCircle className="w-6 h-6 text-rose-400" />}
+                        {scanResult.type === 'ALREADY_RECORDED' && <Clock className="w-6 h-6 text-blue-400" />}
+                        {scanResult.type === 'DIFFERENT_GROUP' && <AlertTriangle className="w-6 h-6 text-amber-400" />}
+                        {scanResult.type === 'NOT_FOUND' && <XCircle className="w-6 h-6 text-slate-400" />}
+                      </div>
+
+                      <div className="text-right">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-black text-xs text-white/80">#{scanResult.student?.code}</span>
+                          <h4 className="font-black text-sm text-white">{scanResult.student?.name || 'كود غير مسجل'}</h4>
+                        </div>
+                        <p className="text-[11px] text-white/80 font-bold mt-0.5">
+                          {scanResult.type === 'SUCCESS_PAID' && 'تم القبول وتسجيل الحضور ✅ (مسدد)'}
+                          {scanResult.type === 'SUCCESS_UNPAID' && '⚠️ اشتراك الشهر غير مسدد (250 جنيه)'}
+                          {scanResult.type === 'ALREADY_RECORDED' && '⛔ كارت مكرر تم تسجيله مسبقاً اليوم'}
+                          {scanResult.type === 'DIFFERENT_GROUP' && `🔄 طالب في (${scanResult.originalGroupName})`}
+                          {scanResult.type === 'NOT_FOUND' && 'الكود غير موجود في المنصة'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handleDismissOverlay}
+                      className="px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition shrink-0"
+                    >
+                      تخطي ⏩
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {!isCameraActive && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-3 bg-slate-950/90 backdrop-blur-xs">
-                  <div className="w-14 h-14 rounded-2xl bg-slate-800/80 text-cyan-400 flex items-center justify-center shadow-lg border border-white/10">
+                  <div className="w-14 h-14 rounded-2xl bg-slate-800/80 text-emerald-400 flex items-center justify-center shadow-lg border border-white/10">
                     <Barcode className="w-7 h-7 animate-pulse" />
                   </div>
                   <div className="space-y-1">
-                    <p className="text-xs font-bold text-white">الكاميرا متوقفة حالياً</p>
+                    <p className="text-xs font-black text-white">الكاميرا في وضع الاستعداد</p>
                     <p className="text-[11px] text-slate-400 max-w-xs">
-                      اضغط على &quot;تشغيل الكاميرا&quot; للمسح بالموبايل، أو استخدم قارئ الباركود الليزر مباشرة
+                      اضغط على &quot;تشغيل الكاميرا&quot; لبدء المسح التلقائي على الستاند، أو استخدم مسدس الليزر
                     </p>
                   </div>
                   <button
                     onClick={startCamera}
-                    className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-brand-600 to-cyan-500 text-white font-black text-xs shadow-lg shadow-brand-600/30 active:scale-95 transition"
+                    className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black text-xs shadow-md shadow-emerald-600/30 active:scale-95 transition"
                   >
                     بدء المسح الآن 📷
                   </button>
@@ -622,7 +769,7 @@ export default function ScannerPage() {
             {/* Quick Test Barcode Buttons (For Demo & Testing) */}
             <div className="pt-2 border-t border-slate-200/50 dark:border-slate-800 space-y-2">
               <div className="flex items-center justify-between text-[11px] text-slate-500 font-bold">
-                <span>⚡ محاكاة سريعة لتجربة الحالات الأربعة:</span>
+                <span>⚡ تجربة الحالات الأربعة بضغطة زر:</span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <button
@@ -654,9 +801,9 @@ export default function ScannerPage() {
           </div>
 
           {/* Emergency Manual Search Bar */}
-          <div className="liquid-glass rounded-3xl p-4 sm:p-5 shadow-sm space-y-3">
+          <div className="liquid-glass rounded-3xl p-4 sm:p-5 shadow-xs space-y-3">
             <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
-              <Search className="w-4 h-4 text-cyan-500" />
+              <Search className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               <span>بحث يدوي بالاسم أو الكود (في حالة نسيان الكارت):</span>
             </div>
 
@@ -691,7 +838,7 @@ export default function ScannerPage() {
                         setSearchQuery('');
                         setSearchResults([]);
                       }}
-                      className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-brand-600 to-cyan-500 text-white font-bold text-xs shadow-xs"
+                      className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold text-xs shadow-xs"
                     >
                       تسجيل الحضور ✅
                     </button>
@@ -711,11 +858,11 @@ export default function ScannerPage() {
               {scanResult.type === 'SUCCESS_PAID' && (
                 <div className="p-6 rounded-3xl bg-gradient-to-br from-emerald-500/15 via-emerald-500/5 to-teal-500/10 border-2 border-emerald-500 shadow-2xl shadow-emerald-500/20 space-y-4">
                   <div className="flex items-center justify-between">
-                    <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-500 text-white flex items-center gap-1.5 shadow-md">
+                    <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-600 text-white flex items-center gap-1.5 shadow-md">
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       <span>تم القبول وتسجيل الحضور ✅</span>
                     </span>
-                    <span className="text-[11px] font-mono text-emerald-600 dark:text-emerald-300 font-bold">
+                    <span className="text-[11px] font-mono text-emerald-700 dark:text-emerald-300 font-bold">
                       {scanResult.timestamp}
                     </span>
                   </div>
@@ -732,7 +879,7 @@ export default function ScannerPage() {
                     </p>
                   </div>
 
-                  <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-200 text-xs font-bold flex items-center justify-between">
+                  <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-900 dark:text-emerald-200 text-xs font-bold flex items-center justify-between">
                     <span>حالة الاشتراك الشهري:</span>
                     <span className="font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                       <Check className="w-4 h-4" />
@@ -896,24 +1043,24 @@ export default function ScannerPage() {
           ) : (
             /* Standby Card when no scan is active */
             <div className="liquid-glass rounded-3xl p-6 text-center space-y-3 border border-slate-200/60 dark:border-slate-800">
-              <div className="w-12 h-12 rounded-2xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-cyan-400 flex items-center justify-center mx-auto shadow-md">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-xs">
                 <QrCode className="w-6 h-6 animate-pulse" />
               </div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">في انتظار مسح كارت الطالب...</h3>
+              <h3 className="text-sm font-black text-slate-900 dark:text-white">في انتظار مسح كارت الطالب...</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                بمجرد مسح الكارت، ستظهر نتيجة القبول والاشتراك هنا فوراً
+                بمجرد مرور كارت الطالب، تظهر بيانات الحضور والسداد بصوت ولون مميز فوراً
               </p>
             </div>
           )}
 
           {/* 2. LIVE SESSION ATTENDANCE STREAM */}
-          <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
+          <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200/50 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-cyan-500" />
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">سجل حضور الحصة المباشر</h3>
+                <Users className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <h3 className="text-sm font-black text-slate-900 dark:text-white">كشف الحضور المباشر للحصة</h3>
               </div>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-black bg-cyan-50 dark:bg-cyan-950/80 text-cyan-700 dark:text-cyan-300">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-black bg-emerald-50 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300">
                 {attendedCount} حاضر / {groupStudentsCount} طالب
               </span>
             </div>

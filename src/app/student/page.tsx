@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { db } from '@/lib/storage';
+import { db, getCurrentMonthLabel } from '@/lib/storage';
 import { Student, Group, AttendanceRecord, Subscription, ExamResult, Exam } from '@/types';
 import {
   GraduationCap,
@@ -27,7 +27,9 @@ import {
   Lock,
   Flame,
   Star,
-  Check
+  Check,
+  Smartphone,
+  ExternalLink
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import QRCode from 'qrcode';
@@ -64,9 +66,11 @@ export default function StudentPortalPage() {
   // Generate QR & Barcode when student is active
   useEffect(() => {
     if (currentStudent) {
+      // High error correction Level H ensures instantaneous scanning under any lighting
       QRCode.toDataURL(currentStudent.code, {
-        width: 320,
+        width: 360,
         margin: 2,
+        errorCorrectionLevel: 'H',
         color: { dark: '#020617', light: '#ffffff' },
       })
         .then((url) => setQrDataUrl(url))
@@ -208,22 +212,26 @@ export default function StudentPortalPage() {
     }
   };
 
+  const currentAcademicMonth = getCurrentMonthLabel();
+  const currentMonthSub = subscriptions.find((s) => s.month === currentAcademicMonth);
+  const isCurrentMonthPaid = currentMonthSub ? currentMonthSub.isPaid : false;
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto py-2">
       {/* 1. STUDENT LOGIN FORM (If not logged in) */}
       {!currentStudent ? (
         <div className="max-w-md mx-auto py-6">
-          <div className="liquid-glass rounded-3xl p-7 sm:p-9 shadow-2xl space-y-6 border border-slate-200 dark:border-cyan-500/20 text-center animate-ios-spring">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-brand-600 to-cyan-400 flex items-center justify-center mx-auto text-white shadow-xl shadow-cyan-500/30">
+          <div className="liquid-glass rounded-3xl p-7 sm:p-9 shadow-xl space-y-6 border border-slate-200/80 dark:border-slate-800 text-center animate-ios-spring">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-brand-700 to-emerald-600 flex items-center justify-center mx-auto text-white shadow-lg shadow-brand-700/20">
               <GraduationCap className="w-9 h-9" />
             </div>
 
             <div className="space-y-1">
               <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-                بوابة الطالب وولي الأمر الذكية
+                بوابة الطالب وولي الأمر
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                أدخل كود الطالب ورقم الهاتف لعرض بطاقة الهوية، الحضور، والدرجات
+                أدخل كود الطالب ورقم الهاتف لعرض بطاقة الهوية، كشف الحضور، والدرجات
               </p>
             </div>
 
@@ -237,7 +245,7 @@ export default function StudentPortalPage() {
             <form onSubmit={handleLogin} className="space-y-4 text-right">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                  <QrCode className="w-3.5 h-3.5 text-cyan-500" />
+                  <QrCode className="w-3.5 h-3.5 text-brand-600 dark:text-cyan-400" />
                   <span>كود الطالب (رقم البطاقة):</span>
                 </label>
                 <input
@@ -252,8 +260,8 @@ export default function StudentPortalPage() {
 
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                  <Phone className="w-3.5 h-3.5 text-brand-500" />
-                  <span>رقم الهاتف المسجل أو آخر 4 أرقام (للأمان والخصوصية):</span>
+                  <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>رقم الهاتف المسجل أو آخر 4 أرقام (للخصوصية):</span>
                 </label>
                 <input
                   type="tel"
@@ -266,16 +274,16 @@ export default function StudentPortalPage() {
 
               <button
                 type="submit"
-                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-brand-600 to-cyan-500 hover:from-brand-500 hover:to-cyan-400 text-white font-black text-sm shadow-xl shadow-brand-600/30 transition active:scale-95 flex items-center justify-center gap-2"
+                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-brand-700 to-emerald-600 hover:from-brand-600 hover:to-emerald-500 text-white font-black text-sm shadow-lg shadow-brand-700/20 transition active:scale-95 flex items-center justify-center gap-2"
               >
                 <ShieldCheck className="w-4 h-4" />
-                <span>عرض كارت الطالب وسجل الدرجات 🔓</span>
+                <span>عرض كارت الطالب والدرجات 🔓</span>
               </button>
             </form>
 
             <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-400 text-center">
               <span>طالب جديد؟ </span>
-              <a href="/register" className="font-bold text-cyan-500 hover:underline">
+              <a href="/register" className="font-bold text-brand-600 dark:text-cyan-400 hover:underline">
                 سجل استمارة التقديم الآن 📝
               </a>
             </div>
@@ -285,9 +293,9 @@ export default function StudentPortalPage() {
         /* 2. ACTIVE STUDENT DASHBOARD & APPLE WALLET PASS */
         <div className="space-y-6 animate-ios-spring">
           {/* Top Profile Header */}
-          <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-slate-200 dark:border-cyan-500/20">
+          <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-slate-200/80 dark:border-slate-800">
             <div className="flex items-center gap-3.5">
-              <div className="w-14 h-14 rounded-2xl overflow-hidden shadow-lg border border-white/20 shrink-0">
+              <div className="w-14 h-14 rounded-2xl overflow-hidden shadow-md border border-white/20 shrink-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/logo.png" alt="مس نشوى" className="w-full h-full object-cover" />
               </div>
@@ -307,7 +315,7 @@ export default function StudentPortalPage() {
                     {currentStudent.status === 'ACTIVE' ? 'معتمد ونشط ✅' : 'معلق ⏳'}
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-semibold">
                   {group ? group.name : 'العلوم المتكاملة • أولى ثانوي'}
                 </p>
               </div>
@@ -322,10 +330,10 @@ export default function StudentPortalPage() {
             </button>
           </div>
 
-          {/* Navigation Tabs (Segmented iOS Controls) */}
-          <div className="flex items-center gap-1 p-1.5 rounded-2xl liquid-glass overflow-x-auto scrollbar-none border border-slate-200 dark:border-white/10">
+          {/* Navigation Tabs (Segmented Controls) */}
+          <div className="flex items-center gap-1 p-1.5 rounded-2xl liquid-glass overflow-x-auto scrollbar-none border border-slate-200/80 dark:border-slate-800">
             {[
-              { id: 'CARD', label: 'كارت الهوية والباركود', icon: QrCode },
+              { id: 'CARD', label: 'كارت الهوية الرقمي', icon: QrCode },
               { id: 'ATTENDANCE', label: `سجل الحضور (${attendance.length})`, icon: CalendarCheck },
               { id: 'EXAMS', label: `كشف الدرجات (${examResults.length})`, icon: Award },
               { id: 'SUBSCRIPTION', label: 'حالة الاشتراك الشهري', icon: CreditCard },
@@ -338,8 +346,8 @@ export default function StudentPortalPage() {
                   onClick={() => setActiveTab(tab.id as any)}
                   className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-200 whitespace-nowrap active:scale-95 ${
                     isActive
-                      ? 'bg-gradient-to-r from-brand-600 to-cyan-500 text-white shadow-md shadow-brand-600/25'
-                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/50'
+                      ? 'bg-brand-700 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-800/60'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -363,11 +371,11 @@ export default function StudentPortalPage() {
                     </div>
                     <div>
                       <h3 className="text-sm font-black tracking-tight">أكاديمية مس نشوى</h3>
-                      <p className="text-[10px] text-cyan-300 font-semibold">علوم متكاملة • أولى ثانوي</p>
+                      <p className="text-[10px] text-emerald-200 font-semibold">علوم متكاملة • أولى ثانوي</p>
                     </div>
                   </div>
 
-                  <span className="px-3 py-1 rounded-full text-xs font-mono font-black bg-white/15 border border-white/20 text-cyan-200">
+                  <span className="px-3 py-1 rounded-full text-xs font-mono font-black bg-white/15 border border-white/20 text-emerald-100">
                     #{currentStudent.code}
                   </span>
                 </div>
@@ -375,20 +383,20 @@ export default function StudentPortalPage() {
                 {/* Pass Student Details */}
                 <div className="space-y-3">
                   <div>
-                    <span className="text-[10px] uppercase tracking-wider text-cyan-200/80 font-bold block">اسم الطالب</span>
+                    <span className="text-[10px] uppercase tracking-wider text-emerald-200/80 font-bold block">اسم الطالب</span>
                     <h2 className="text-2xl font-black tracking-tight">{currentStudent.name}</h2>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 pt-1 text-xs">
                     <div>
-                      <span className="text-[10px] text-cyan-200/80 font-bold block">المجموعة والموعد</span>
+                      <span className="text-[10px] text-emerald-200/80 font-bold block">المجموعة والموعد</span>
                       <p className="font-bold text-white leading-tight">{group ? group.name : '—'}</p>
                     </div>
                     <div>
-                      <span className="text-[10px] text-cyan-200/80 font-bold block">حالة الاشتراك</span>
-                      <p className="font-bold text-emerald-300 flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>مسدد لشهر ({db.getSettings() ? 'أكتوبر 2026' : 'الشهر الحالي'})</span>
+                      <span className="text-[10px] text-emerald-200/80 font-bold block">حالة الاشتراك</span>
+                      <p className={`font-bold flex items-center gap-1 ${isCurrentMonthPaid ? 'text-emerald-300' : 'text-amber-300'}`}>
+                        {isCurrentMonthPaid ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                        <span>{isCurrentMonthPaid ? `مسدد (${currentAcademicMonth})` : `مستحق (${currentAcademicMonth})`}</span>
                       </p>
                     </div>
                   </div>
@@ -403,7 +411,7 @@ export default function StudentPortalPage() {
                         cardDisplayType === 'QR' ? 'bg-white text-slate-950 shadow-xs' : 'text-white/80'
                       }`}
                     >
-                      رمز الـ QR
+                      رمز الـ QR (موصى به ⚡)
                     </button>
                     <button
                       onClick={() => setCardDisplayType('BARCODE')}
@@ -438,18 +446,18 @@ export default function StudentPortalPage() {
               <div className="flex gap-2">
                 <button
                   onClick={handleShareCard}
-                  className="flex-1 py-3 rounded-2xl liquid-glass hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-white font-bold text-xs transition flex items-center justify-center gap-1.5 border border-slate-200 dark:border-slate-700 shadow-xs"
+                  className="flex-1 py-3 rounded-2xl liquid-glass hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-white font-bold text-xs transition flex items-center justify-center gap-1.5 border border-slate-200 dark:border-slate-700 shadow-2xs"
                 >
-                  <Share2 className="w-4 h-4 text-cyan-500" />
+                  <Share2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                   <span>{copiedMsg ? 'تم نسخ بيانات الكارت! ✅' : 'مشاركة الكارت'}</span>
                 </button>
 
                 <button
                   onClick={() => window.print()}
-                  className="flex-1 py-3 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-brand-600/25"
+                  className="flex-1 py-3 rounded-2xl bg-brand-700 hover:bg-brand-800 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-xs"
                 >
                   <Download className="w-4 h-4" />
-                  <span>طباعة وحفظ كـ PDF</span>
+                  <span>طباعة وحفظ PDF</span>
                 </button>
               </div>
             </div>
@@ -457,9 +465,9 @@ export default function StudentPortalPage() {
 
           {/* TAB 2: Attendance History */}
           {activeTab === 'ATTENDANCE' && (
-            <div className="liquid-glass rounded-3xl p-6 shadow-sm space-y-4">
+            <div className="liquid-glass rounded-3xl p-6 shadow-xs space-y-4">
               <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <CalendarCheck className="w-5 h-5 text-cyan-500" />
+                <CalendarCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 <span>سجل حضور الحصص</span>
               </h2>
 
@@ -493,9 +501,9 @@ export default function StudentPortalPage() {
 
           {/* TAB 3: Exam Results */}
           {activeTab === 'EXAMS' && (
-            <div className="liquid-glass rounded-3xl p-6 shadow-sm space-y-4">
+            <div className="liquid-glass rounded-3xl p-6 shadow-xs space-y-4">
               <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Award className="w-5 h-5 text-brand-600 dark:text-cyan-400" />
+                <Award className="w-5 h-5 text-brand-700 dark:text-emerald-400" />
                 <span>كشف نتائج وتقييمات الامتحانات</span>
               </h2>
 
@@ -515,7 +523,7 @@ export default function StudentPortalPage() {
                       >
                         <div className="flex items-start justify-between gap-2">
                           <h3 className="font-bold text-slate-900 dark:text-white text-xs">{exam.title}</h3>
-                          <span className="px-2.5 py-1 rounded-xl bg-brand-50 dark:bg-brand-950/80 text-brand-700 dark:text-cyan-300 font-mono font-black text-xs">
+                          <span className="px-2.5 py-1 rounded-xl bg-brand-50 dark:bg-brand-950/80 text-brand-700 dark:text-emerald-300 font-mono font-black text-xs">
                             {result.score} / {exam.maxScore} ({percentage}%)
                           </span>
                         </div>
@@ -535,9 +543,9 @@ export default function StudentPortalPage() {
 
           {/* TAB 4: Subscriptions */}
           {activeTab === 'SUBSCRIPTION' && (
-            <div className="liquid-glass rounded-3xl p-6 shadow-sm space-y-4">
+            <div className="liquid-glass rounded-3xl p-6 shadow-xs space-y-4">
               <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-emerald-500" />
+                <CreditCard className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 <span>سجل الاشتراكات الشهرية</span>
               </h2>
 
