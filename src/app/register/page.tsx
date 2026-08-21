@@ -87,8 +87,15 @@ export default function RegisterPage() {
       return;
     }
 
+    const lastReg = localStorage.getItem('last_reg_timestamp');
+    if (lastReg && Date.now() - parseInt(lastReg, 10) < 5000) {
+      setErrors({ form: 'يرجى الانتظار بضع ثوانٍ قبل محاولة التسجيل مجدداً' });
+      return;
+    }
+
     setErrors({});
     setIsSubmitting(true);
+    localStorage.setItem('last_reg_timestamp', String(Date.now()));
 
     try {
       // Save to DB

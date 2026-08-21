@@ -1,5 +1,6 @@
 import { Student, Group, Session, AttendanceRecord, Subscription, Exam, ExamResult, SystemData, SystemSettings } from '@/types';
 import { supabase, isSupabaseConfigured } from './supabase';
+import { validateBackupFile } from './validation';
 
 const STORAGE_KEY = 'nashwa_academy_db_live_v1';
 
@@ -75,6 +76,13 @@ const DEFAULT_SETTINGS: SystemSettings = {
   telegramBotToken: '',
   telegramAdminChatId: '',
 };
+
+function generateSecureId(prefix: string): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${prefix}-${crypto.randomUUID().slice(0, 12)}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+}
 
 // --- DB Data Mappers (camelCase <-> snake_case) ---
 function studentToDb(s: Student) {
@@ -516,7 +524,7 @@ class StorageService {
 
     // Record attendance
     const newRecord: AttendanceRecord = {
-      id: `att-${sessionId}-${student.id}-${Date.now()}`,
+      id: generateSecureId(`att-${sessionId}-${student.id}`),
       sessionId: sessionId,
       studentId: student.id,
       groupId: student.groupId,
@@ -564,7 +572,7 @@ class StorageService {
 
     if (subIndex === -1) {
       const newSub: Subscription = {
-        id: `sub-${studentId}-${Date.now()}`,
+        id: generateSecureId(`sub-${studentId}`),
         studentId,
         month,
         amount: price,
@@ -604,7 +612,7 @@ class StorageService {
     const data = this.getData();
     const newGroup: Group = {
       ...groupData,
-      id: `grp-${Date.now()}`,
+      id: generateSecureId('grp'),
     };
     data.groups.push(newGroup);
     this.saveData(data);
@@ -710,7 +718,7 @@ class StorageService {
     const data = this.getData();
     const newStudent: Student = {
       ...studentData,
-      id: `std-${Date.now()}`,
+      id: generateSecureId('std'),
       registeredAt: new Date().toISOString(),
     };
     data.students.push(newStudent);
@@ -787,7 +795,7 @@ class StorageService {
       ...examData,
       totalScore: total,
       maxScore: total,
-      id: `ex-${Date.now()}`,
+      id: generateSecureId('ex'),
     };
     data.exams.push(newExam);
     this.saveData(data);
@@ -836,7 +844,7 @@ class StorageService {
 
     const newResult: ExamResult = {
       ...resultData,
-      id: `res-${Date.now()}`,
+      id: generateSecureId('res'),
       gradedAt: new Date().toISOString(),
     };
     data.examResults.push(newResult);
@@ -910,8 +918,10 @@ class StorageService {
   public importBackup(jsonString: string): boolean {
     try {
       const parsed = JSON.parse(jsonString);
-      if (parsed.students && parsed.groups) {
-        this.saveData(parsed, false);
+      const validation = validateBackupFile(parsed);
+      if (validation.success && validation.data) {
+        const validatedData = validation.data as SystemData;
+        this.saveData(validatedData, false);
         return true;
       }
       return false;

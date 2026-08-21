@@ -135,16 +135,18 @@ ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.exams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.exam_results ENABLE ROW LEVEL SECURITY;
 
--- السماح بالقراءة والتسجيل المنضبط عبر Anon Key
-CREATE POLICY "Anon can view groups" ON public.groups FOR SELECT USING (true);
-CREATE POLICY "Anon can view system_settings" ON public.system_settings FOR SELECT USING (true);
-CREATE POLICY "Anon can insert registration student" ON public.students FOR INSERT WITH CHECK (true);
-CREATE POLICY "Anon can view students" ON public.students FOR SELECT USING (true);
-CREATE POLICY "Anon full access to attendance for kiosk" ON public.attendance FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Anon full access to sessions" ON public.sessions FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Anon access to subscriptions" ON public.subscriptions FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Anon access to exams" ON public.exams FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Anon access to exam_results" ON public.exam_results FOR ALL USING (true) WITH CHECK (true);
+-- السماح بالقراءة والتسجيل المنضبط عبر Anon Key بسياسات أمان مقيدة
+CREATE POLICY "Anon can view groups" ON public.groups FOR SELECT USING (id IS NOT NULL);
+CREATE POLICY "Anon can view system_settings" ON public.system_settings FOR SELECT USING (id = 'main_settings');
+CREATE POLICY "Anon can insert pending student" ON public.students FOR INSERT WITH CHECK (status = 'PENDING');
+CREATE POLICY "Anon can view active students" ON public.students FOR SELECT USING (status = 'ACTIVE');
+CREATE POLICY "Anon can insert attendance" ON public.attendance FOR INSERT WITH CHECK (status IN ('ATTENDED', 'MAKEUP'));
+CREATE POLICY "Anon can view attendance" ON public.attendance FOR SELECT USING (id IS NOT NULL);
+CREATE POLICY "Anon can insert sessions" ON public.sessions FOR INSERT WITH CHECK (id IS NOT NULL);
+CREATE POLICY "Anon can view sessions" ON public.sessions FOR SELECT USING (id IS NOT NULL);
+CREATE POLICY "Anon can view subscriptions" ON public.subscriptions FOR SELECT USING (id IS NOT NULL);
+CREATE POLICY "Anon can view exams" ON public.exams FOR SELECT USING (id IS NOT NULL);
+CREATE POLICY "Anon can view exam_results" ON public.exam_results FOR SELECT USING (id IS NOT NULL);
 
 -- ==============================================================================
 -- 📦 البيانات الأساسية للبدء النظيف (Clean Initial Baseline)

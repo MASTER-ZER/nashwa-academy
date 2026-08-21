@@ -269,7 +269,7 @@ export default function SettingsDashboardPage() {
         body: JSON.stringify({
           message: {
             text: '/stats',
-            chat: { id: settings.telegramAdminChatId || '6602868710' },
+            chat: { id: settings.telegramAdminChatId },
           },
         }),
       });
