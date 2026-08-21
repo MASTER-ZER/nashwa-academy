@@ -27,7 +27,8 @@ import {
   Sparkles,
   Smartphone,
   Eye,
-  CheckCheck
+  CheckCheck,
+  Image as ImageIcon
 } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import confetti from 'canvas-confetti';
@@ -523,6 +524,35 @@ export default function ScannerPage() {
     processCode(studentCode, true);
   };
 
+  // Upload Image File to Decode QR / Barcode
+  const handleScanFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      if (!html5QrCodeRef.current) {
+        html5QrCodeRef.current = new Html5Qrcode('qr-reader-target', {
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.QR_CODE,
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.ITF,
+          ],
+          verbose: false,
+        });
+      }
+
+      const decodedText = await html5QrCodeRef.current.scanFile(file, true);
+      processCode(decodedText);
+    } catch {
+      alert('لم يتم العثور على رمز باركود أو QR واضح في هذه الصورة. يرجى اختيار صورة أو لقطة شاشة أخرى أو تشغيل الكاميرا.');
+    } finally {
+      e.target.value = '';
+    }
+  };
+
   // Skip / Dismiss Overlay
   const handleDismissOverlay = () => {
     setScanResult(null);
@@ -671,6 +701,15 @@ export default function ScannerPage() {
                     </button>
                   </>
                 )}
+
+                <label
+                  className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                  title="مسح باركود أو QR من صورة / لقطة شاشة"
+                >
+                  <ImageIcon className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span className="hidden sm:inline">من صورة</span>
+                  <input type="file" accept="image/*" onChange={handleScanFile} className="hidden" />
+                </label>
 
                 <button
                   onClick={isCameraActive ? stopCamera : startCamera}

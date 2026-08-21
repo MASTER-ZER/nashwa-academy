@@ -100,3 +100,19 @@ export function generateStudentWelcomeWhatsAppUrl(params: {
   const phone = formatEgyptianPhone(params.teacherPhone || '01012345678');
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
+
+export function generateSubscriptionReminderWhatsAppUrl(params: {
+  parentPhone: string;
+  parentName: string;
+  studentName: string;
+  month: string;
+  amount: number;
+}): string {
+  const message = `أهلاً بحضرتك أستاذ ${params.parentName || 'ولي الأمر'} 🌸،\n` +
+    `نود تذكير سيادتكم بسداد اشتراك مادة العلوم المتكاملة لابنكم (${params.studentName}) عن شهر (${params.month}) بقيمة (${params.amount} ج.م).\n\n` +
+    `شاكرين لحضرتكم حسن التعاون والاهتمام،\n` +
+    `مس نشوى 🌸`;
+
+  const phone = formatEgyptianPhone(params.parentPhone);
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+}
