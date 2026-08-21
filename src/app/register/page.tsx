@@ -50,12 +50,16 @@ export default function RegisterPage() {
     return /^(010|011|012|015)\d{8}$/.test(cleaned);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     const newErrors: Record<string, string> = {};
 
     if (!formData.name.trim() || formData.name.trim().split(' ').length < 2) {
-      newErrors.name = 'يرجى كتابة الاسم ثنائي أو ثلاثي على الأقل';
+      newErrors.name = 'يرجى كتابة اسم الطالب ثنائياً أو ثلاثياً على الأقل';
     }
 
     if (!validatePhone(formData.phone)) {
@@ -84,35 +88,43 @@ export default function RegisterPage() {
     }
 
     setErrors({});
-
-    // Save to DB
-    const student = db.registerStudent({
-      name: formData.name.trim(),
-      phone: formData.phone.trim(),
-      parentName: formData.parentName.trim(),
-      parentPhone: formData.parentPhone.trim(),
-      address: formData.address.trim(),
-      academicYear: 'FIRST_SEC',
-      groupId: formData.groupId,
-    });
-
-    const selectedGroup = groups.find((g) => g.id === formData.groupId);
-    notifyNewStudentRegistration(student, selectedGroup).catch(() => {});
-
-    // Save student code to localStorage for permanent session
-    localStorage.setItem('logged_student_code', student.code);
-
-    setRegisteredCode(student.code);
-    setIsSubmitted(true);
+    setIsSubmitting(true);
 
     try {
-      confetti({
-        particleCount: 90,
-        spread: 75,
-        origin: { y: 0.6 },
+      // Save to DB
+      const student = await db.registerStudent({
+        name: formData.name.trim(),
+        phone: formData.phone.trim(),
+        parentName: formData.parentName.trim(),
+        parentPhone: formData.parentPhone.trim(),
+        address: formData.address.trim(),
+        academicYear: 'FIRST_SEC',
+        groupId: formData.groupId,
       });
-    } catch {
-      // ignore
+
+      const selectedGroup = groups.find((g) => g.id === formData.groupId);
+      notifyNewStudentRegistration(student, selectedGroup).catch(() => {});
+
+      // Save student code to localStorage for permanent session
+      localStorage.setItem('logged_student_code', student.code);
+
+      setRegisteredCode(student.code);
+      setIsSubmitted(true);
+
+      try {
+        confetti({
+          particleCount: 90,
+          spread: 75,
+          origin: { y: 0.6 },
+        });
+      } catch {
+        // ignore
+      }
+    } catch (err) {
+      console.error('Registration submission error:', err);
+      alert('حدث خطأ أثناء إرسال الاستمارة، يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 

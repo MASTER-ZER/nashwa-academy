@@ -16,16 +16,19 @@ export function getCurrentMonthLabel(): string {
 }
 
 export function getAcademicMonthsList(): string[] {
-  return [
-    'أكتوبر 2026',
-    'نوفمبر 2026',
-    'ديسمبر 2026',
-    'يناير 2027',
-    'فبراير 2027',
-    'مارس 2027',
-    'أبريل 2027',
-    'مايو 2027',
+  const arabicMonths = [
+    'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+    'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
   ];
+  const list: string[] = [];
+  const now = new Date();
+  const startMonth = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(startMonth.getFullYear(), startMonth.getMonth() + i, 1);
+    const label = `${arabicMonths[d.getMonth()]} ${d.getFullYear()}`;
+    list.push(label);
+  }
+  return list;
 }
 
 // Default initial seed data (Groups & Clean State)
@@ -69,8 +72,8 @@ const DEFAULT_SETTINGS: SystemSettings = {
   adminPasscode: '2026',
   assistantPhone: '01012345678',
   centerLocation: 'سنتر الأوائل - قاعة 1',
-  telegramBotToken: '8897471175:AAH__IM1R9Ro2yYdClmtZ_X4TvzFZsr5uUs',
-  telegramAdminChatId: '6602868710',
+  telegramBotToken: '',
+  telegramAdminChatId: '',
 };
 
 // --- DB Data Mappers (camelCase <-> snake_case) ---
@@ -203,6 +206,7 @@ class StorageService {
         { data: subscriptionsData },
         { data: examsData },
         { data: resultsData },
+        { data: settingsData },
       ] = await Promise.all([
         supabase.from('groups').select('*'),
         supabase.from('students').select('*'),
@@ -211,6 +215,7 @@ class StorageService {
         supabase.from('subscriptions').select('*'),
         supabase.from('exams').select('*'),
         supabase.from('exam_results').select('*'),
+        supabase.from('system_settings').select('*').eq('id', 'main_settings').maybeSingle(),
       ]);
 
       const localData = this.getData();
@@ -267,7 +272,17 @@ class StorageService {
               gradedAt: r.graded_at,
             }))
           : localData.examResults,
-        settings: localData.settings || DEFAULT_SETTINGS,
+        settings: settingsData ? {
+          teacherName: settingsData.teacher_name || DEFAULT_SETTINGS.teacherName,
+          subjectName: settingsData.subject_name || DEFAULT_SETTINGS.subjectName,
+          academicYearLabel: settingsData.academic_year_label || DEFAULT_SETTINGS.academicYearLabel,
+          subscriptionPrice: Number(settingsData.subscription_price || 250),
+          adminPasscode: settingsData.admin_passcode || DEFAULT_SETTINGS.adminPasscode,
+          assistantPhone: settingsData.assistant_phone || DEFAULT_SETTINGS.assistantPhone,
+          centerLocation: settingsData.center_location || DEFAULT_SETTINGS.centerLocation,
+          telegramBotToken: '',
+          telegramAdminChatId: '',
+        } : (localData.settings || DEFAULT_SETTINGS),
         lastBackupDate: localData.lastBackupDate,
       };
 
@@ -638,7 +653,7 @@ class StorageService {
   }
 
   // --- Students ---
-  public registerStudent(studentData: {
+  public async registerStudent(studentData: {
     name: string;
     phone: string;
     parentName: string;
@@ -648,10 +663,34 @@ class StorageService {
     academicYear?: any;
     status?: any;
     notes?: string;
-  }): Student {
+  }): Promise<Student> {
     const data = this.getData();
-    const codes = data.students.map((s) => parseInt(s.code, 10)).filter((n) => !isNaN(n));
-    const nextCode = codes.length > 0 ? String(Math.max(...codes) + 1) : '101';
+    let nextCode = '101';
+
+    if (supabase) {
+      try {
+        const { data: seqCode, error } = await supabase.rpc('get_next_student_code');
+        if (!error && seqCode) {
+          nextCode = String(seqCode);
+        } else {
+          const { data: maxRows } = await supabase
+            .from('students')
+            .select('code')
+            .order('registered_at', { ascending: false })
+            .limit(50);
+          const cloudCodes = (maxRows || []).map((r: any) => parseInt(r.code, 10)).filter((n: number) => !isNaN(n));
+          const localCodes = data.students.map((s) => parseInt(s.code, 10)).filter((n) => !isNaN(n));
+          const allCodes = [...cloudCodes, ...localCodes];
+          nextCode = allCodes.length > 0 ? String(Math.max(...allCodes) + 1) : '101';
+        }
+      } catch {
+        const codes = data.students.map((s) => parseInt(s.code, 10)).filter((n) => !isNaN(n));
+        nextCode = codes.length > 0 ? String(Math.max(...codes) + 1) : '101';
+      }
+    } else {
+      const codes = data.students.map((s) => parseInt(s.code, 10)).filter((n) => !isNaN(n));
+      nextCode = codes.length > 0 ? String(Math.max(...codes) + 1) : '101';
+    }
 
     return this.addStudent({
       code: nextCode,
@@ -662,7 +701,7 @@ class StorageService {
       address: studentData.address || '',
       groupId: studentData.groupId,
       academicYear: studentData.academicYear || 'FIRST_SEC',
-      status: studentData.status || 'ACTIVE',
+      status: studentData.status || 'PENDING',
       notes: studentData.notes,
     });
   }
@@ -832,6 +871,18 @@ class StorageService {
       ...newSettings,
     };
     this.saveData(data, false);
+
+    if (supabase) {
+      supabase.from('system_settings').upsert({
+        id: 'main_settings',
+        teacher_name: data.settings.teacherName,
+        subject_name: data.settings.subjectName,
+        academic_year_label: data.settings.academicYearLabel,
+        subscription_price: data.settings.subscriptionPrice,
+        admin_passcode: data.settings.adminPasscode,
+        assistant_phone: data.settings.assistantPhone,
+      }, { onConflict: 'id' }).then(() => {}, (err: any) => console.warn('Supabase settings sync error:', err));
+    }
     return data.settings;
   }
 

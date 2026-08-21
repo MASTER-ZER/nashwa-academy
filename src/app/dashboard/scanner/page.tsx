@@ -424,9 +424,11 @@ export default function ScannerPage() {
 
   // Stop Camera
   const stopCamera = async () => {
-    if (html5QrCodeRef.current && isCameraActive) {
+    if (html5QrCodeRef.current) {
       try {
-        await html5QrCodeRef.current.stop();
+        if (html5QrCodeRef.current.isScanning) {
+          await html5QrCodeRef.current.stop();
+        }
         html5QrCodeRef.current.clear();
       } catch (err) {
         console.error('Error stopping camera:', err);
@@ -466,7 +468,10 @@ export default function ScannerPage() {
     return () => {
       if (html5QrCodeRef.current) {
         try {
-          html5QrCodeRef.current.stop().catch(() => {});
+          if (html5QrCodeRef.current.isScanning) {
+            html5QrCodeRef.current.stop().catch(() => {});
+          }
+          html5QrCodeRef.current.clear();
         } catch {}
       }
       releaseWakeLock();

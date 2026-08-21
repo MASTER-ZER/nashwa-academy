@@ -56,14 +56,14 @@ export default function StudentsDirectoryPage() {
     }
   };
 
-  const handleAddStudent = (e: React.FormEvent) => {
+  const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStudentData.name.trim() || !newStudentData.phone.trim()) {
       alert('يرجى كتابة اسم الطالب ورقم الهاتف على الأقل');
       return;
     }
 
-    const std = db.registerStudent({
+    const std = await db.registerStudent({
       name: newStudentData.name.trim(),
       phone: newStudentData.phone.trim(),
       parentName: newStudentData.parentName.trim() || 'ولي الأمر',

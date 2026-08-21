@@ -1,9 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getCurrentMonthLabel } from '@/lib/storage';
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8897471175:AAH__IM1R9Ro2yYdClmtZ_X4TvzFZsr5uUs';
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID;
+const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
+
+function escapeHtml(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 async function answerCallbackQuery(callbackQueryId: string, text: string, showAlert: boolean = true) {
+  if (!TELEGRAM_BOT_TOKEN) return;
   try {
     await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
       method: 'POST',
@@ -20,6 +34,7 @@ async function answerCallbackQuery(callbackQueryId: string, text: string, showAl
 }
 
 async function editMessageText(chatId: number | string, messageId: number, text: string) {
+  if (!TELEGRAM_BOT_TOKEN) return;
   try {
     await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/editMessageText`, {
       method: 'POST',
@@ -37,24 +52,47 @@ async function editMessageText(chatId: number | string, messageId: number, text:
 }
 
 export async function POST(req: NextRequest) {
+  if (!TELEGRAM_BOT_TOKEN) {
+    return NextResponse.json({ ok: false, error: 'TELEGRAM_BOT_TOKEN not configured' }, { status: 500 });
+  }
+
+  // Security Check 1: Verify Webhook Secret Token Header if set
+  if (TELEGRAM_WEBHOOK_SECRET) {
+    const secretHeader = req.headers.get('x-telegram-bot-api-secret-token');
+    if (secretHeader !== TELEGRAM_WEBHOOK_SECRET) {
+      console.warn('Unauthorized telegram webhook attempt. Invalid secret token.');
+      return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+    }
+  }
+
   try {
     const body = await req.json();
 
-    // 1. Handle Callback Queries (Button Clicks)
+    // 1. Handle Callback Queries (Approve / Reject Buttons)
     if (body.callback_query) {
       const callbackQuery = body.callback_query;
-      const callbackData = callbackQuery.data; // e.g. "approve:std-123:104" or "reject:std-123:104"
+      const callbackData = callbackQuery.data || '';
       const message = callbackQuery.message;
-      const chatId = message.chat.id;
+      const chatId = String(message.chat.id);
       const messageId = message.message_id;
       const originalText = message.text || '';
+
+      // Security Check 2: Verify caller is Admin Chat
+      if (TELEGRAM_ADMIN_CHAT_ID && chatId !== TELEGRAM_ADMIN_CHAT_ID) {
+        console.warn('Unauthorized user clicked callback button:', chatId);
+        await answerCallbackQuery(callbackQuery.id, 'عذراً، هذا الإجراء مخصص لمس نشوى فقط 🔒', true);
+        return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 });
+      }
 
       const parts = callbackData.split(':');
       const action = parts[0];
       const studentId = parts[1];
       const studentCode = parts[2] || '';
+      const safeCode = escapeHtml(studentCode);
 
       if (action === 'approve') {
+        const currentMonth = getCurrentMonthLabel();
+
         // Update Supabase
         if (supabase) {
           await supabase
@@ -65,12 +103,13 @@ export async function POST(req: NextRequest) {
             })
             .eq('id', studentId);
 
-          // Add October subscription (250 EGP)
+          // Add Dynamic Month subscription (250 EGP)
+          const monthSlug = currentMonth.replace(/\s+/g, '-');
           await supabase.from('subscriptions').upsert(
             {
-              id: `sub-${studentId}-oct-2026`,
+              id: `sub-${studentId}-${monthSlug}`,
               student_id: studentId,
-              month: 'أكتوبر 2026',
+              month: currentMonth,
               amount: 250.0,
               is_paid: false,
             },
@@ -80,7 +119,7 @@ export async function POST(req: NextRequest) {
 
         await answerCallbackQuery(
           callbackQuery.id,
-          `تم قبول الطالب وتفعيل كارت الحضور رقم #${studentCode} بنجاح! 🎉`,
+          `تم قبول الطالب وتفعيل كارت الحضور رقم #${safeCode} بنجاح! 🎉`,
           true
         );
 
@@ -100,7 +139,7 @@ export async function POST(req: NextRequest) {
             .eq('id', studentId);
         }
 
-        await answerCallbackQuery(callbackQuery.id, `تم رفض طلب تسجيل الطالب #${studentCode}`, false);
+        await answerCallbackQuery(callbackQuery.id, `تم رفض طلب تسجيل الطالب #${safeCode}`, false);
 
         const updatedText = `${originalText}\n\n❌ <b>تم رفض طلب الطالب بواسطة المس نشوى</b>`;
         await editMessageText(chatId, messageId, updatedText);
@@ -109,7 +148,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Handle Direct Messages / Commands
+    // 2. Handle Direct Commands (/start, /stats, /link)
     if (body.message) {
       const message = body.message;
       const text = message.text?.trim() || '';
