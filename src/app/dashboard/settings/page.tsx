@@ -670,6 +670,33 @@ export default function SettingsDashboardPage() {
               <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
             </label>
           </div>
+
+          {/* Clean Slate Factory Reset */}
+          <div className="p-4 rounded-2xl border border-rose-200/80 dark:border-rose-900/50 bg-rose-50/50 dark:bg-rose-950/20 space-y-2 sm:col-span-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-rose-700 dark:text-rose-400 flex items-center gap-1">
+                <Trash2 className="w-4 h-4" />
+                تصفير وحذف جميع البيانات التجريبية (بدء التشغيل الفعلي على بلاطة)
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-600 dark:text-slate-400">
+              حذف كافة الطلاب التجريبيين، وسجلات الحضور والغياب، وكشوف الاشتراكات، ونتائج الامتحانات السابقة للبدء من الصفر تماماً.
+            </p>
+            <button
+              onClick={() => {
+                if (confirm('هل أنت متأكد تماماً من تصفير كافة البيانات والطلاب لبدء العمل الحقيقي من الصفر؟')) {
+                  db.clearAllData();
+                  sound.playSuccessChime();
+                  alert('تم تصفير المنصة بنجاح! يمكنك الآن تسجيل وإدخال الطلاب الفعليين.');
+                  window.location.reload();
+                }
+              }}
+              className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-black text-xs transition flex items-center gap-1.5 shadow-sm"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>تصفير البيانات والبدء من الصفر 🧹</span>
+            </button>
+          </div>
         </div>
       </div>
 

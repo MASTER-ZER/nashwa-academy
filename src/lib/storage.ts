@@ -1,7 +1,7 @@
 import { Student, Group, Session, AttendanceRecord, Subscription, Exam, ExamResult, SystemData, SystemSettings } from '@/types';
 import { supabase, isSupabaseConfigured } from './supabase';
 
-const STORAGE_KEY = 'nashwa_academy_db_v4';
+const STORAGE_KEY = 'nashwa_academy_db_live_v1';
 
 // Helper to get current Arabic academic month dynamically
 export function getCurrentMonthLabel(): string {
@@ -28,7 +28,7 @@ export function getAcademicMonthsList(): string[] {
   ];
 }
 
-// Default initial seed data
+// Default initial seed data (Groups & Clean State)
 const INITIAL_GROUPS: Group[] = [
   {
     id: 'grp-1',
@@ -56,111 +56,10 @@ const INITIAL_GROUPS: Group[] = [
   },
 ];
 
-const INITIAL_STUDENTS: Student[] = [
-  {
-    id: 'std-101',
-    code: '101',
-    name: 'إياد محمد نجاح',
-    phone: '01012345678',
-    parentName: 'محمد نجاح',
-    parentPhone: '01187654321',
-    address: 'شارع الجمهورية - المنصورة',
-    academicYear: 'FIRST_SEC',
-    groupId: 'grp-1',
-    status: 'ACTIVE',
-    registeredAt: '2026-10-01T10:00:00Z',
-    notes: 'طالب ممتاز ومتفوق',
-  },
-  {
-    id: 'std-102',
-    code: '102',
-    name: 'أحمد محمود السعيد',
-    phone: '01098765432',
-    parentName: 'محمود السعيد',
-    parentPhone: '01234567890',
-    address: 'شارع البحر - طلخا',
-    academicYear: 'FIRST_SEC',
-    groupId: 'grp-1',
-    status: 'ACTIVE',
-    registeredAt: '2026-10-02T11:00:00Z',
-  },
-  {
-    id: 'std-103',
-    code: '103',
-    name: 'سارة إبراهيم الشناوي',
-    phone: '01511223344',
-    parentName: 'إبراهيم الشناوي',
-    parentPhone: '01599887766',
-    address: 'شارع المشاية - المنصورة',
-    academicYear: 'FIRST_SEC',
-    groupId: 'grp-2',
-    status: 'ACTIVE',
-    registeredAt: '2026-10-03T12:00:00Z',
-  },
-];
-
-const INITIAL_SUBSCRIPTIONS: Subscription[] = [
-  {
-    id: 'sub-1',
-    studentId: 'std-101',
-    month: getCurrentMonthLabel(),
-    amount: 250,
-    isPaid: true,
-    paidAt: '2026-10-01T10:00:00Z',
-    receivedBy: 'مس نشوى',
-  },
-  {
-    id: 'sub-2',
-    studentId: 'std-102',
-    month: getCurrentMonthLabel(),
-    amount: 250,
-    isPaid: false,
-  },
-  {
-    id: 'sub-3',
-    studentId: 'std-103',
-    month: getCurrentMonthLabel(),
-    amount: 250,
-    isPaid: true,
-    paidAt: '2026-10-03T12:00:00Z',
-    receivedBy: 'مس نشوى',
-  },
-];
-
-const INITIAL_EXAMS: Exam[] = [
-  {
-    id: 'ex-1',
-    title: 'اختبار الباب الأول - مقدمة في العلوم المتكاملة',
-    date: '2026-10-15',
-    totalScore: 20,
-    maxScore: 20,
-    academicYear: 'FIRST_SEC',
-    groupId: 'grp-1',
-  },
-];
-
-const INITIAL_RESULTS: ExamResult[] = [
-  {
-    id: 'res-1',
-    examId: 'ex-1',
-    studentId: 'std-101',
-    score: 20,
-    feedback: 'ممتاز! الدرجة النهائية مع مرتبة الشرف 🌟',
-    parentNotified: true,
-    studentNotified: true,
-    gradedAt: '2026-10-16T10:00:00Z',
-  },
-  {
-    id: 'res-2',
-    examId: 'ex-1',
-    studentId: 'std-102',
-    score: 17,
-    feedback: 'جيد جداً، برجاء مراجعة مسائل السرعة والتحويلات',
-    parentNotified: false,
-    studentNotified: false,
-    gradedAt: '2026-10-16T10:05:00Z',
-  },
-];
+const INITIAL_STUDENTS: Student[] = [];
+const INITIAL_SUBSCRIPTIONS: Subscription[] = [];
+const INITIAL_EXAMS: Exam[] = [];
+const INITIAL_RESULTS: ExamResult[] = [];
 
 const DEFAULT_SETTINGS: SystemSettings = {
   teacherName: 'مس نشوى',
@@ -971,10 +870,36 @@ class StorageService {
   }
 
   public resetToDefault() {
+    this.clearAllData();
+  }
+
+  public clearAllData() {
+    const cleanData: SystemData = {
+      groups: INITIAL_GROUPS,
+      students: [],
+      sessions: [],
+      attendance: [],
+      subscriptions: [],
+      exams: [],
+      examResults: [],
+      settings: DEFAULT_SETTINGS,
+    };
     if (this.isClient()) {
-      localStorage.removeItem(STORAGE_KEY);
-      this.getData();
-      this.notifyListeners();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanData));
+      localStorage.removeItem('logged_student_code');
+      localStorage.removeItem('logged_student_phone');
+    }
+    this.notifyListeners();
+
+    if (supabase) {
+      Promise.all([
+        supabase.from('students').delete().neq('id', 'placeholder'),
+        supabase.from('attendance').delete().neq('id', 'placeholder'),
+        supabase.from('subscriptions').delete().neq('id', 'placeholder'),
+        supabase.from('exams').delete().neq('id', 'placeholder'),
+        supabase.from('exam_results').delete().neq('id', 'placeholder'),
+        supabase.from('sessions').delete().neq('id', 'placeholder'),
+      ]).catch((err) => console.warn('Supabase clear error:', err));
     }
   }
 }
