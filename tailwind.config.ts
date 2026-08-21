@@ -6,6 +6,7 @@ const config: Config = {
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
@@ -22,18 +23,6 @@ const config: Config = {
           900: "#1e3a8a",
           950: "#172554",
         },
-        emerald: {
-          500: "#10b981",
-          600: "#059669",
-        },
-        rose: {
-          500: "#f43f5e",
-          600: "#e11d48",
-        },
-        amber: {
-          500: "#f59e0b",
-          600: "#d97706",
-        }
       },
       fontFamily: {
         sans: ["Cairo", "sans-serif"],
@@ -41,6 +30,7 @@ const config: Config = {
       animation: {
         "pulse-fast": "pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite",
         "bounce-short": "bounce 0.5s ease-in-out 2",
+        "pulse-slow": "pulse-slow 4s ease-in-out infinite",
       }
     },
   },

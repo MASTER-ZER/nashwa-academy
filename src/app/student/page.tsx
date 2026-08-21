@@ -376,12 +376,12 @@ export default function StudentPortalPage() {
           </div>
 
           {/* Navigation Tabs (Segmented Controls) */}
-          <div className="flex items-center gap-1 p-1.5 rounded-2xl liquid-glass overflow-x-auto scrollbar-none border border-slate-200/80 dark:border-slate-800 no-print">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1.5 rounded-2xl liquid-glass border border-slate-200/80 dark:border-slate-800 no-print">
             {[
-              { id: 'CARD', label: 'كارت الهوية الرقمي', icon: QrCode },
-              { id: 'ATTENDANCE', label: `سجل الحضور (${attendance.length})`, icon: CalendarCheck },
-              { id: 'EXAMS', label: `كشف الدرجات (${examResults.length})`, icon: Award },
-              { id: 'SUBSCRIPTION', label: 'حالة الاشتراك الشهري', icon: CreditCard },
+              { id: 'CARD', label: 'كارت الهوية', fullLabel: 'كارت الهوية الرقمي', icon: QrCode },
+              { id: 'ATTENDANCE', label: `الحضور (${attendance.length})`, fullLabel: `سجل الحضور (${attendance.length})`, icon: CalendarCheck },
+              { id: 'EXAMS', label: `الدرجات (${examResults.length})`, fullLabel: `كشف الدرجات (${examResults.length})`, icon: Award },
+              { id: 'SUBSCRIPTION', label: 'الاشتراك', fullLabel: 'الاشتراك الشهري', icon: CreditCard },
             ].map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -389,14 +389,14 @@ export default function StudentPortalPage() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-200 whitespace-nowrap active:scale-95 ${
+                  className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition-all active:scale-95 ${
                     isActive
-                      ? 'bg-brand-700 text-white shadow-xs'
+                      ? 'bg-brand-600 text-white shadow-md shadow-brand-600/30'
                       : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-800/60'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
-                  <span>{tab.label}</span>
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{tab.label}</span>
                 </button>
               );
             })}
@@ -487,9 +487,9 @@ export default function StudentPortalPage() {
                   {cardDisplayType === 'QR' ? (
                     qrDataUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={qrDataUrl} alt="Student QR Code" className="w-56 h-56 object-contain" />
+                      <img src={qrDataUrl} alt="Student QR Code" className="w-[min(56vw,224px)] aspect-square object-contain mx-auto" />
                     ) : (
-                      <div className="w-56 h-56 flex items-center justify-center text-slate-400">جاري التوليد...</div>
+                      <div className="w-[min(56vw,224px)] aspect-square flex items-center justify-center text-slate-400">جاري التوليد...</div>
                     )
                   ) : (
                     <div className="py-2 overflow-x-auto max-w-full">

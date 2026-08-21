@@ -6,13 +6,22 @@
   :root {
     --ios-bg: #f8fafc;
     --ios-text: #0f172a;
-    --brand-glow: rgba(0, 122, 255, 0.25);
+    --brand-glow: rgba(0, 122, 255, 0.2);
   }
 
   .dark {
     --ios-bg: #030712;
     --ios-text: #f8fafc;
-    --brand-glow: rgba(56, 189, 248, 0.35);
+    --brand-glow: rgba(56, 189, 248, 0.3);
+  }
+
+  /* Accessibility Focus Rings */
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
   }
 }
 
@@ -32,83 +41,103 @@ html, body {
 .dark body {
   background-color: #030712;
   background-image: 
-    radial-gradient(at 10% 15%, rgba(14, 165, 233, 0.12) 0px, transparent 50%),
-    radial-gradient(at 90% 20%, rgba(99, 102, 241, 0.12) 0px, transparent 50%),
-    radial-gradient(at 50% 80%, rgba(16, 185, 129, 0.08) 0px, transparent 50%),
-    radial-gradient(at 80% 90%, rgba(14, 165, 233, 0.1) 0px, transparent 50%);
+    radial-gradient(at 10% 15%, rgba(14, 165, 233, 0.1) 0px, transparent 50%),
+    radial-gradient(at 90% 20%, rgba(99, 102, 241, 0.1) 0px, transparent 50%),
+    radial-gradient(at 50% 80%, rgba(16, 185, 129, 0.07) 0px, transparent 50%),
+    radial-gradient(at 80% 90%, rgba(14, 165, 233, 0.08) 0px, transparent 50%);
   background-attachment: fixed;
 }
 
-/* Luxury Liquid Glass Tokens */
+/* Optimized Luxury Liquid Glass Tokens (Smooth 60FPS on Mobile & Desktop) */
 .liquid-glass {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(226, 232, 240, 0.9);
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(226, 232, 240, 0.85);
   box-shadow: 
-    0 10px 30px -10px rgba(0, 0, 0, 0.06),
+    0 10px 25px -10px rgba(0, 0, 0, 0.05),
     inset 0 1px 1px 0 rgba(255, 255, 255, 0.9);
 }
 
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .liquid-glass {
+    backdrop-filter: blur(16px) saturate(150%);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
+  }
+}
+
 .dark .liquid-glass {
-  background: rgba(11, 19, 38, 0.75);
-  backdrop-filter: blur(32px) saturate(200%);
-  -webkit-backdrop-filter: blur(32px) saturate(200%);
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(11, 19, 38, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 
-    0 20px 45px -10px rgba(0, 0, 0, 0.7),
-    0 0 20px -5px rgba(56, 189, 248, 0.12),
-    inset 0 1px 1px 0 rgba(255, 255, 255, 0.12),
-    inset 0 -1px 2px 0 rgba(0, 0, 0, 0.5);
+    0 16px 35px -10px rgba(0, 0, 0, 0.65),
+    0 0 15px -5px rgba(56, 189, 248, 0.1),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .dark .liquid-glass {
+    backdrop-filter: blur(20px) saturate(170%);
+    -webkit-backdrop-filter: blur(20px) saturate(170%);
+  }
+}
+
+@media (min-width: 640px) {
+  .liquid-glass {
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+  }
+  .dark .liquid-glass {
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+  }
 }
 
 .liquid-glass-card {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.8) 100%);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(226, 232, 240, 0.95);
-  box-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.05);
-  transition: all 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.04);
+  transition: all 0.25s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .dark .liquid-glass-card {
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(10, 16, 32, 0.75) 100%);
-  backdrop-filter: blur(28px);
-  -webkit-backdrop-filter: blur(28px);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.88) 0%, rgba(10, 16, 32, 0.8) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 
-    0 20px 45px -10px rgba(0, 0, 0, 0.65),
-    inset 0 1px 1px 0 rgba(255, 255, 255, 0.12);
-  transition: all 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+    0 16px 35px -8px rgba(0, 0, 0, 0.6),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.1);
+  transition: all 0.25s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .liquid-glass-card:hover {
-  transform: translateY(-3px) scale(1.008);
-  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.08);
 }
 
 .dark .liquid-glass-card:hover {
-  transform: translateY(-3px) scale(1.008);
+  transform: translateY(-2px);
   box-shadow: 
-    0 25px 55px -10px rgba(0, 0, 0, 0.85),
-    0 0 25px 0 rgba(56, 189, 248, 0.2),
-    inset 0 1px 2px 0 rgba(255, 255, 255, 0.2);
-  border-color: rgba(56, 189, 248, 0.35);
+    0 20px 40px -8px rgba(0, 0, 0, 0.75),
+    0 0 20px 0 rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.3);
 }
 
 /* Apple Wallet Pass Luxury Dark Holographic Card */
 .apple-wallet-pass {
   background: linear-gradient(140deg, #060e22 0%, #0d1b38 45%, #050b18 100%);
-  border-radius: 28px;
+  border-radius: 24px;
   box-shadow: 
-    0 35px 70px -15px rgba(0, 5, 25, 0.75),
-    0 0 30px -5px rgba(56, 189, 248, 0.25),
-    inset 0 1px 2px 0 rgba(255, 255, 255, 0.25),
+    0 25px 50px -12px rgba(0, 5, 25, 0.7),
+    0 0 25px -5px rgba(56, 189, 248, 0.2),
+    inset 0 1px 2px 0 rgba(255, 255, 255, 0.2),
     inset 0 -1px 2px 0 rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   position: relative;
   overflow: hidden;
-  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.4s ease;
+  contain: paint;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
 }
 
 .apple-wallet-pass::after {
@@ -118,7 +147,7 @@ html, body {
   left: -50%;
   width: 200%;
   height: 200%;
-  background: radial-gradient(circle at 50% 30%, rgba(56, 189, 248, 0.15) 0%, transparent 60%);
+  background: radial-gradient(circle at 50% 30%, rgba(56, 189, 248, 0.12) 0%, transparent 60%);
   pointer-events: none;
 }
 
@@ -133,9 +162,9 @@ html, body {
   background: linear-gradient(
     75deg,
     transparent 20%,
-    rgba(255, 255, 255, 0.08) 40%,
-    rgba(255, 255, 255, 0.18) 50%,
-    rgba(255, 255, 255, 0.08) 60%,
+    rgba(255, 255, 255, 0.06) 40%,
+    rgba(255, 255, 255, 0.15) 50%,
+    rgba(255, 255, 255, 0.06) 60%,
     transparent 80%
   );
   animation: shimmer-sweep 5s infinite;
@@ -150,31 +179,39 @@ html, body {
 
 /* Smooth Spring Animation */
 @keyframes spring-pop {
-  0% { transform: scale(0.94) translateY(4px); opacity: 0; }
+  0% { transform: scale(0.96) translateY(3px); opacity: 0; }
   100% { transform: scale(1) translateY(0); opacity: 1; }
 }
 
 .animate-ios-spring {
-  animation: spring-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: spring-pop 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* Ambient Pulsing Glow */
 @keyframes pulse-slow {
-  0%, 100% { opacity: 0.4; transform: scale(1); }
-  50% { opacity: 0.7; transform: scale(1.05); }
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50% { opacity: 0.65; transform: scale(1.03); }
 }
 
 .animate-pulse-slow {
   animation: pulse-slow 4s ease-in-out infinite;
 }
 
-/* Neon Glow Accents */
-.neon-glow-cyan {
-  box-shadow: 0 0 20px -3px rgba(56, 189, 248, 0.4);
+/* Scroll snap & mask utilities */
+.snap-x-mandatory {
+  scroll-snap-type: x mandatory;
 }
 
-.neon-glow-emerald {
-  box-shadow: 0 0 20px -3px rgba(52, 199, 89, 0.4);
+.snap-start {
+  scroll-snap-align: start;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Print styles for HD 3D Student Card & Printouts */
@@ -187,16 +224,5 @@ html, body {
   }
   .no-print {
     display: none !important;
-  }
-  .print-only {
-    display: block !important;
-  }
-  .apple-wallet-pass {
-    box-shadow: none !important;
-    border: 2px solid #0f172a !important;
-    margin: 20px auto !important;
-    page-break-inside: avoid !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
   }
 }

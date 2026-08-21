@@ -667,10 +667,10 @@ export default function ScannerPage() {
         </div>
       )}
 
-      {/* Main Grid: Left Scanner Feed & Right Live Log */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* LEFT COLUMN: Camera & Scan Area (7 Cols) */}
-        <div className="lg:col-span-7 space-y-4">
+      {/* Main Grid: Left Scanner Feed & Right Live Log (1.5fr / 1fr) */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-4 items-start">
+        {/* LEFT COLUMN: Camera & Scan Area */}
+        <div className="space-y-4">
           <div className="liquid-glass rounded-3xl p-4 sm:p-5 shadow-xs border border-slate-200/80 dark:border-slate-800 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -810,12 +810,13 @@ export default function ScannerPage() {
               )}
             </div>
 
-            {/* Quick Test Barcode Buttons (For Demo & Testing) */}
-            <div className="pt-2 border-t border-slate-200/50 dark:border-slate-800 space-y-2">
-              <div className="flex items-center justify-between text-[11px] text-slate-500 font-bold">
-                <span>⚡ تجربة الحالات الأربعة بضغطة زر:</span>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {/* Quick Test Barcode Simulation (Collapsed for Clean Stand View) */}
+            <details className="pt-2 border-t border-slate-200/50 dark:border-slate-800 text-xs group">
+              <summary className="font-bold text-slate-500 dark:text-slate-400 cursor-pointer flex items-center justify-between py-1 hover:text-slate-800 dark:hover:text-slate-200 transition">
+                <span>🛠️ أدوات الاختبار والمحاكاة التجريبية</span>
+                <span className="text-[10px] text-brand-600 dark:text-cyan-400 font-bold">عرض الأكواد ▾</span>
+              </summary>
+              <div className="pt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <button
                   onClick={() => processCode('101')}
                   className="py-2 px-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold text-center transition"
@@ -841,7 +842,7 @@ export default function ScannerPage() {
                   ⚪ 4. كود غير مسجل
                 </button>
               </div>
-            </div>
+            </details>
           </div>
 
           {/* Emergency Manual Search Bar */}
@@ -893,8 +894,8 @@ export default function ScannerPage() {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: 4-STATE HOLO FEEDBACK CARD & LIVE SESSION LOG (5 Cols) */}
-        <div className="lg:col-span-5 space-y-4">
+        {/* RIGHT COLUMN: 4-STATE HOLO FEEDBACK CARD & LIVE SESSION LOG */}
+        <div className="space-y-4 lg:sticky lg:top-[76px]">
           {/* 1. DYNAMIC COLOR-CODED SCAN RESULT CARD (The 4 Distinct Alert States) */}
           {scanResult ? (
             <div className="animate-ios-spring space-y-3">

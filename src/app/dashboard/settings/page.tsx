@@ -33,6 +33,7 @@ import {
   Users,
   Check,
   Zap,
+  Sliders,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -41,6 +42,7 @@ const HOURS = ['1:00', '2:00', '3:00', '4:00', '5:00', '6:00', '7:00', '8:00', '
 const PERIODS = ['مساءً', 'صباحاً', 'ظهراً', 'عصراً'];
 
 export default function SettingsDashboardPage() {
+  const [activeSectionTab, setActiveSectionTab] = useState<'GENERAL' | 'GROUPS' | 'TELEGRAM' | 'BACKUP'>('GENERAL');
   const [data, setData] = useState<SystemData | null>(null);
   const [settings, setSettings] = useState<SystemSettings>({
     teacherName: 'مس نشوى',
@@ -345,12 +347,40 @@ export default function SettingsDashboardPage() {
         </div>
       )}
 
+      {/* Settings Segmented Tab Navigation */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1.5 rounded-2xl liquid-glass border border-slate-200/80 dark:border-slate-800">
+        {[
+          { id: 'GENERAL', label: 'الإعدادات العامة', icon: Sliders },
+          { id: 'GROUPS', label: `المجموعات (${data.groups.length})`, icon: Layers },
+          { id: 'TELEGRAM', label: 'بوت تليجرام', icon: Bot },
+          { id: 'BACKUP', label: 'النسخ والتصفير', icon: Database },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeSectionTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveSectionTab(tab.id as any)}
+              className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all active:scale-95 ${
+                isActive
+                  ? 'bg-brand-600 text-white shadow-md shadow-brand-600/30'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-800/60'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5 shrink-0" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* SECTION 1: Master General Settings */}
-      <form onSubmit={handleSaveSettings} className="liquid-glass rounded-3xl p-5 sm:p-7 shadow-sm space-y-6">
-        <div className="flex items-center justify-between border-b border-slate-200/50 dark:border-slate-800 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-cyan-400 flex items-center justify-center">
-              <Sparkles className="w-6 h-6" />
+      {activeSectionTab === 'GENERAL' && (
+        <form onSubmit={handleSaveSettings} className="liquid-glass rounded-3xl p-5 sm:p-7 shadow-sm space-y-6 animate-ios-spring">
+          <div className="flex items-center justify-between border-b border-slate-200/50 dark:border-slate-800 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-cyan-400 flex items-center justify-center">
+                <Sparkles className="w-6 h-6" />
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-white">التحكم في بيانات الأكاديمية والأسعار</h2>
@@ -465,10 +495,12 @@ export default function SettingsDashboardPage() {
           </div>
         </div>
       </form>
+      )}
 
       {/* SECTION 2: Groups Management Section with Flexible Scheduling */}
-      <div className="liquid-glass rounded-3xl p-5 sm:p-7 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/50 dark:border-slate-800 pb-4">
+      {activeSectionTab === 'GROUPS' && (
+        <div className="liquid-glass rounded-3xl p-5 sm:p-7 shadow-sm space-y-4 animate-ios-spring">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/50 dark:border-slate-800 pb-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-cyan-400 flex items-center justify-center">
               <Layers className="w-6 h-6" />
@@ -538,10 +570,12 @@ export default function SettingsDashboardPage() {
           })}
         </div>
       </div>
+      )}
 
       {/* SECTION 3: Telegram Bot Live In-Dashboard Config */}
-      <div className="liquid-glass rounded-3xl p-5 sm:p-7 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/50 dark:border-slate-800 pb-4">
+      {activeSectionTab === 'TELEGRAM' && (
+        <div className="liquid-glass rounded-3xl p-5 sm:p-7 shadow-sm space-y-4 animate-ios-spring">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/50 dark:border-slate-800 pb-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-cyan-50 dark:bg-cyan-950/60 text-cyan-600 dark:text-cyan-400 flex items-center justify-center">
               <Bot className="w-6 h-6" />
@@ -618,10 +652,12 @@ export default function SettingsDashboardPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* SECTION 4: Database & Cloud Backup */}
-      <div className="liquid-glass rounded-3xl p-5 sm:p-7 shadow-sm space-y-4">
-        <div className="flex items-center gap-3 border-b border-slate-200/50 dark:border-slate-800 pb-4">
+      {activeSectionTab === 'BACKUP' && (
+        <div className="liquid-glass rounded-3xl p-5 sm:p-7 shadow-sm space-y-4 animate-ios-spring">
+          <div className="flex items-center gap-3 border-b border-slate-200/50 dark:border-slate-800 pb-4">
           <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
             <Database className="w-6 h-6" />
           </div>
@@ -699,6 +735,7 @@ export default function SettingsDashboardPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* DROPDOWN GROUP MODAL WITH INDEPENDENT DAY SCHEDULING */}
       {isGroupModalOpen && (

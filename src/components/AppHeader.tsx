@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Sparkles, FileSpreadsheet, GraduationCap, LayoutDashboard, Home, Lock } from 'lucide-react';
+import { FileSpreadsheet, GraduationCap, Home } from 'lucide-react';
 import ThemeToggle from '@/components/ThemeToggle';
 
 export default function AppHeader() {
@@ -10,8 +10,8 @@ export default function AppHeader() {
   const isDashboard = pathname.startsWith('/dashboard');
 
   return (
-    <header className="sticky top-0 z-40 px-2 sm:px-6 py-2.5 sm:py-3 no-print">
-      <div className="max-w-7xl mx-auto h-14 sm:h-16 rounded-2xl liquid-glass px-3 sm:px-6 flex items-center justify-between gap-2 border border-white/40 dark:border-cyan-500/20">
+    <header className="sticky top-0 z-40 px-3.5 sm:px-6 py-2.5 no-print">
+      <div className="max-w-[1280px] mx-auto h-14 sm:h-16 rounded-2xl liquid-glass px-3.5 sm:px-6 flex items-center justify-between gap-2 border border-white/40 dark:border-cyan-500/20">
         {/* Logo & Brand */}
         <Link href="/" className="flex items-center gap-2.5 sm:gap-3 group active:scale-95 transition-transform shrink-0">
           <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl overflow-hidden shadow-md shadow-cyan-500/20 group-hover:scale-105 transition-transform shrink-0 border border-white/20">
@@ -31,7 +31,7 @@ export default function AppHeader() {
         {/* Navigation Actions - Strictly Separated */}
         <nav className="flex items-center gap-1.5 sm:gap-2">
           {isDashboard ? (
-            /* TEACHER / DASHBOARD VIEW (NO STUDENT PASS LINK) */
+            /* TEACHER / DASHBOARD VIEW */
             <>
               <Link
                 href="/"

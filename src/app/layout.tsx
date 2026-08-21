@@ -1,11 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import Link from "next/link";
-import { Sparkles, GraduationCap, FileSpreadsheet, Lock } from "lucide-react";
 import PWAInstallBanner from "@/components/PWAInstallBanner";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import AppHeader from "@/components/AppHeader";
-import ThemeToggle from "@/components/ThemeToggle";
 import { ThemeProvider } from "@/context/ThemeContext";
 
 export const metadata: Metadata = {
@@ -18,8 +15,7 @@ export const viewport: Viewport = {
   themeColor: "#030712",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  maximumScale: 5,
 };
 
 export default function RootLayout({
@@ -38,15 +34,15 @@ export default function RootLayout({
         <ThemeProvider>
           {/* Ambient Background Aura Lights (Active in Dark Mode) */}
           <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10 dark:block hidden">
-            <div className="absolute -top-40 right-10 w-[500px] h-[500px] bg-cyan-500/10 rounded-full blur-[120px] animate-pulse-slow" />
-            <div className="absolute top-1/3 -left-40 w-[600px] h-[600px] bg-brand-600/10 rounded-full blur-[140px] animate-pulse-slow" style={{ animationDelay: '2s' }} />
+            <div className="absolute -top-40 right-10 w-[450px] h-[450px] bg-cyan-500/10 rounded-full blur-[100px] animate-pulse-slow" />
+            <div className="absolute top-1/3 -left-40 w-[550px] h-[550px] bg-brand-600/10 rounded-full blur-[120px] animate-pulse-slow" style={{ animationDelay: '2s' }} />
           </div>
 
           {/* Unified Dynamic App Header */}
           <AppHeader />
 
-          {/* Main App Content */}
-          <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 lg:p-8 pb-24 md:pb-8">
+          {/* Main App Content Container */}
+          <main className="flex-1 max-w-[1280px] w-full mx-auto px-3.5 sm:px-6 py-4 pb-20 md:pb-8">
             {children}
           </main>
 
@@ -57,16 +53,19 @@ export default function RootLayout({
           <MobileBottomNav />
 
           {/* Discreet Admin Link in Footer */}
-          <footer className="mt-auto border-t border-slate-200/60 dark:border-slate-800/60 py-5 text-center text-xs text-slate-500 dark:text-slate-400 no-print pb-24 md:pb-5">
-            <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-              <p className="text-[11px]">جميع الحقوق محفوظة © {new Date().getFullYear()} • منصة مس نشوى للعلوم المتكاملة</p>
-              <Link
-                href="/dashboard"
-                className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-cyan-400 transition font-semibold"
-              >
-                <Lock className="w-3 h-3" />
-                <span>دخول المعلمة والإدارة 🔒</span>
-              </Link>
+          <footer className="mt-auto border-t border-slate-200/60 dark:border-slate-800/60 py-4 text-center text-xs text-slate-500 dark:text-slate-400 no-print pb-20 md:pb-4">
+            <div className="max-w-[1280px] mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+              <p className="font-semibold">
+                جميع الحقوق محفوظة © {new Date().getFullYear()} لأكاديمية مس نشوى - العلوم المتكاملة
+              </p>
+              <div className="flex items-center gap-3">
+                <a
+                  href="/dashboard"
+                  className="font-bold text-brand-600 dark:text-cyan-400 hover:underline flex items-center gap-1 transition"
+                >
+                  لوحة الإدارة 🔒
+                </a>
+              </div>
             </div>
           </footer>
         </ThemeProvider>
