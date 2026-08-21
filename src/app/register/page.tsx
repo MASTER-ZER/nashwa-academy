@@ -6,7 +6,7 @@ import { notifyNewStudentRegistration } from '@/lib/telegram';
 import { generateStudentWelcomeWhatsAppUrl } from '@/lib/whatsapp';
 import { Group, Student } from '@/types';
 import confetti from 'canvas-confetti';
-import { UserCheck, Sparkles, AlertCircle, ArrowRight, Phone, User, MapPin, Clock, QrCode, CheckCircle2, Camera, Upload, Image as ImageIcon, X } from 'lucide-react';
+import { UserCheck, Sparkles, AlertCircle, ArrowRight, Phone, User, MapPin, Clock, QrCode, CheckCircle2, Camera, Upload, Image as ImageIcon, X, Eye } from 'lucide-react';
 import Link from 'next/link';
 import DateWheelPicker from '@/components/DateWheelPicker';
 import { compressStudentPhoto } from '@/lib/imageCompressor';
@@ -31,7 +31,10 @@ export default function RegisterPage() {
   const [registeredCode, setRegisteredCode] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewPhotoModal, setPreviewPhotoModal] = useState<string | null>(null);
+
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     db.syncFromSupabase().then(() => {
@@ -71,15 +74,17 @@ export default function RegisterPage() {
       setErrors((prev) => ({ ...prev, photo: '' }));
     } catch (err) {
       console.error('Photo compression error:', err);
-      setErrors((prev) => ({ ...prev, photo: 'فشل معالجة الصورة، يرجى تجربة صورة أخرى' }));
+      setErrors((prev) => ({ ...prev, photo: 'فشل معالجة الصورة، يرجى اختيار صورة أخرى' }));
     } finally {
       setIsProcessingPhoto(false);
+      e.target.value = '';
     }
   };
 
   const handleRemovePhoto = () => {
     setFormData((prev) => ({ ...prev, photoUrl: '' }));
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (galleryInputRef.current) galleryInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -370,68 +375,135 @@ export default function RegisterPage() {
 
         {/* Photo Upload Section (Controlled by Admin Settings Toggle) */}
         {requirePhoto && (
-          <div className="space-y-2 p-4 rounded-2xl bg-brand-50/40 dark:bg-brand-950/30 border border-brand-200/60 dark:border-brand-900/50 animate-ios-spring">
+          <div className="space-y-3 p-4 rounded-2xl bg-brand-50/40 dark:bg-brand-950/30 border border-brand-200/60 dark:border-brand-900/50 animate-ios-spring">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
                 <Camera className="w-4 h-4 text-brand-600 dark:text-cyan-400" />
                 <span>الصورة الشخصية للطالب (مطلوبة لإصدار الكارت الذكي)</span>
                 <span className="text-rose-500">*</span>
               </label>
-              <span className="text-[10px] text-brand-700 dark:text-cyan-300 font-bold">إجباري 📸</span>
+              <span className="text-[10px] text-brand-700 dark:text-cyan-300 font-bold bg-brand-100 dark:bg-brand-900/60 px-2 py-0.5 rounded-full">
+                إجباري 📸
+              </span>
             </div>
 
             {formData.photoUrl ? (
-              <div className="flex items-center gap-4 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-md border-2 border-emerald-500 shrink-0">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={formData.photoUrl} alt="Student Preview" className="w-full h-full object-cover" />
+              <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div
+                    onClick={() => setPreviewPhotoModal(formData.photoUrl)}
+                    className="w-16 h-16 rounded-2xl overflow-hidden shadow-md border-2 border-emerald-500 shrink-0 cursor-pointer relative group"
+                    title="اضغط للمعاينة المكبرة"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={formData.photoUrl} alt="Student Preview" className="w-full h-full object-cover group-hover:scale-105 transition" />
+                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition">
+                      <Eye className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>تم حفظ ومعالجة الصورة بنجاح!</span>
+                    </p>
+                    <p className="text-[10px] text-slate-400">اضغط على الصورة للمعاينة المكبرة أو غيّرها من الأزرار أدناه</p>
+                  </div>
                 </div>
-                <div className="flex-1 space-y-1">
-                  <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>تم التقاط ومعالجة الصورة بنجاح!</span>
-                  </p>
-                  <p className="text-[10px] text-slate-400">ستظهر هذه الصورة في كارت الحضور الذكي والـ ID</p>
+
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => galleryInputRef.current?.click()}
+                    className="flex-1 py-2 px-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center gap-1.5 transition active:scale-95 text-[11px]"
+                  >
+                    <ImageIcon className="w-3.5 h-3.5 text-brand-600 dark:text-cyan-400" />
+                    <span>تغيير من المعرض 🖼️</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => cameraInputRef.current?.click()}
+                    className="flex-1 py-2 px-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center gap-1.5 transition active:scale-95 text-[11px]"
+                  >
+                    <Camera className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>سيلفي بالكاميرا 📸</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 hover:bg-rose-100 transition"
+                    title="حذف الصورة"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleRemovePhoto}
-                  className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 hover:bg-rose-100 transition"
-                  title="تغيير الصورة"
-                >
-                  <X className="w-4 h-4" />
-                </button>
               </div>
             ) : (
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className={`p-5 rounded-2xl border-2 border-dashed ${
-                  errors.photo ? 'border-rose-400 bg-rose-50/20' : 'border-brand-300 dark:border-brand-800 hover:border-brand-500'
-                } bg-white/60 dark:bg-slate-900/60 flex flex-col items-center justify-center gap-2 cursor-pointer transition active:scale-[0.99]`}
-              >
-                <div className="w-12 h-12 rounded-2xl bg-brand-100 dark:bg-brand-950 text-brand-600 dark:text-cyan-400 flex items-center justify-center shadow-xs">
-                  {isProcessingPhoto ? (
-                    <div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <Camera className="w-6 h-6" />
-                  )}
+              <div className="space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* Gallery Choice Button */}
+                  <button
+                    type="button"
+                    onClick={() => galleryInputRef.current?.click()}
+                    disabled={isProcessingPhoto}
+                    className={`p-4 rounded-2xl border-2 border-dashed ${
+                      errors.photo ? 'border-rose-400 bg-rose-50/30' : 'border-brand-300 dark:border-brand-800 hover:border-brand-500'
+                    } bg-white/70 dark:bg-slate-900/70 flex items-center gap-3 transition active:scale-[0.99] text-right`}
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-brand-100 dark:bg-brand-950 text-brand-600 dark:text-cyan-400 flex items-center justify-center shrink-0">
+                      <ImageIcon className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-900 dark:text-white">اختيار من المعرض 🖼️</p>
+                      <p className="text-[10px] text-slate-400">اختر صورة من ألبوم الموبايل</p>
+                    </div>
+                  </button>
+
+                  {/* Camera Choice Button */}
+                  <button
+                    type="button"
+                    onClick={() => cameraInputRef.current?.click()}
+                    disabled={isProcessingPhoto}
+                    className={`p-4 rounded-2xl border-2 border-dashed ${
+                      errors.photo ? 'border-rose-400 bg-rose-50/30' : 'border-emerald-300 dark:border-emerald-800 hover:border-emerald-500'
+                    } bg-white/70 dark:bg-slate-900/70 flex items-center gap-3 transition active:scale-[0.99] text-right`}
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                      <Camera className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-900 dark:text-white">التقاط سيلفي 📸</p>
+                      <p className="text-[10px] text-slate-400">التقاط مباشر بالكاميرا الأمامية</p>
+                    </div>
+                  </button>
                 </div>
-                <div className="text-center">
-                  <p className="text-xs font-bold text-slate-800 dark:text-white">
-                    {isProcessingPhoto ? 'جاري ضغط ومعالجة الصورة...' : 'اضغط هنا لالتقاط صورة بالكاميرا أو اختيارها من المعرض'}
+
+                {isProcessingPhoto && (
+                  <p className="text-center text-xs font-bold text-brand-600 dark:text-cyan-400 animate-pulse">
+                    جاري معالجة وضغط صورتك بدقة عالية... ⏳
                   </p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">صورة واضحة للوجه (سيلفي أو صورة شخصية)</p>
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="user"
-                  onChange={handlePhotoUpload}
-                  className="hidden"
-                />
+                )}
               </div>
             )}
+
+            {/* Hidden Inputs for Gallery & Camera */}
+            <input
+              ref={galleryInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoUpload}
+              className="hidden"
+            />
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="user"
+              onChange={handlePhotoUpload}
+              className="hidden"
+            />
+
             {errors.photo && <p className="text-[11px] text-rose-600 font-semibold">{errors.photo}</p>}
           </div>
         )}
@@ -468,6 +540,43 @@ export default function RegisterPage() {
           ملاحظة: سيصل إشعار فوري لمس نشوى للمراجعة والاعتماد وتفعيل الكارت.
         </p>
       </form>
+
+      {/* Lightbox Preview Modal */}
+      {previewPhotoModal && (
+        <div
+          onClick={() => setPreviewPhotoModal(null)}
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-ios-spring"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-sm w-full bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border border-white/20 p-4 text-center space-y-3"
+          >
+            <div className="flex items-center justify-between border-b border-white/10 pb-2">
+              <span className="text-xs font-bold text-white">معاينة الصورة الشخصية 📸</span>
+              <button
+                type="button"
+                onClick={() => setPreviewPhotoModal(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="w-full aspect-square rounded-2xl overflow-hidden shadow-inner bg-black flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={previewPhotoModal} alt="Preview" className="w-full h-full object-cover" />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setPreviewPhotoModal(null)}
+              className="w-full py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-black text-xs transition"
+            >
+              إغلاق المعاينة ✅
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

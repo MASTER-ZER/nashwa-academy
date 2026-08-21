@@ -47,11 +47,22 @@ function BarcodeItem({ student, groupName }: { student: Student; groupName: stri
         </span>
       </div>
 
-      {/* Student Details */}
-      <div className="space-y-0.5 my-1 text-right">
-        <p className="text-xs font-black text-slate-900 leading-tight">{student.name}</p>
-        <p className="text-[9px] text-slate-600 font-semibold">{groupName}</p>
-        <p className="text-[8px] text-slate-400 font-mono">ولي الأمر: {student.parentPhone}</p>
+      {/* Student Details with optional Photo */}
+      <div className="flex items-center justify-between gap-2 my-1 text-right">
+        <div className="space-y-0.5 flex-1">
+          <p className="text-xs font-black text-slate-900 leading-tight">{student.name}</p>
+          <p className="text-[9px] text-slate-600 font-semibold">{groupName}</p>
+          {student.birthDate && (
+            <p className="text-[8px] text-slate-500 font-mono">الميلاد: {student.birthDate}</p>
+          )}
+          <p className="text-[8px] text-slate-400 font-mono">ولي الأمر: {student.parentPhone}</p>
+        </div>
+        {student.photoUrl && (
+          <div className="w-12 h-12 rounded-xl overflow-hidden border border-slate-300 shadow-2xs shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={student.photoUrl} alt={student.name} className="w-full h-full object-cover" />
+          </div>
+        )}
       </div>
 
       {/* Barcode & QR Code Graphic */}

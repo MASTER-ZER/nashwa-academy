@@ -23,6 +23,9 @@ import {
   ExternalLink,
   DollarSign,
   Award,
+  Download,
+  Image as ImageIcon,
+  ZoomIn,
 } from 'lucide-react';
 import Link from 'next/link';
 import DateWheelPicker from '@/components/DateWheelPicker';
@@ -35,10 +38,13 @@ export default function StudentsDirectoryPage() {
 
   const [viewingStudent, setViewingStudent] = useState<Student | null>(null);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [previewImageModal, setPreviewImageModal] = useState<{ url: string; name: string; code: string } | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+
   const addFileInputRef = useRef<HTMLInputElement>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
+  const profilePhotoInputRef = useRef<HTMLInputElement>(null);
 
   const [newStudentData, setNewStudentData] = useState({
     name: '',
@@ -75,6 +81,34 @@ export default function StudentsDirectoryPage() {
       s.parentPhone.includes(q);
     return matchesGroup && matchesSearch;
   });
+
+  const handleDownloadPhoto = (photoUrl: string, studentName: string, studentCode: string) => {
+    const a = document.createElement('a');
+    a.href = photoUrl;
+    a.download = `student_${studentCode}_${studentName.replace(/\s+/g, '_')}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const handleProfilePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !viewingStudent) return;
+    setIsProcessingPhoto(true);
+    try {
+      const compressed = await compressStudentPhoto(file);
+      const updated = { ...viewingStudent, photoUrl: compressed };
+      db.updateStudent(viewingStudent.id, updated);
+      setViewingStudent(updated);
+      loadData();
+    } catch (err) {
+      console.error('Error updating profile photo:', err);
+      alert('فشل معالجة الصورة، يرجى اختيار صورة أخرى');
+    } finally {
+      setIsProcessingPhoto(false);
+      e.target.value = '';
+    }
+  };
 
   const handleUpdateStudent = (e: React.FormEvent) => {
     e.preventDefault();
@@ -244,7 +278,9 @@ export default function StudentsDirectoryPage() {
                             <img
                               src={std.photoUrl}
                               alt={std.name}
-                              className="w-8 h-8 rounded-full object-cover border border-cyan-500 shadow-2xs shrink-0"
+                              onClick={() => setPreviewImageModal({ url: std.photoUrl!, name: std.name, code: std.code })}
+                              className="w-8 h-8 rounded-full object-cover border border-cyan-500 shadow-2xs shrink-0 cursor-pointer hover:scale-110 transition"
+                              title="اضغط لمعاينة وتنزيل الصورة"
                             />
                           ) : (
                             <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center font-bold text-[11px] shrink-0">
@@ -260,7 +296,7 @@ export default function StudentsDirectoryPage() {
                       <td className="p-4 font-mono font-black text-brand-700 dark:text-cyan-400">#{std.code}</td>
                       <td className="p-4 font-mono text-slate-600 dark:text-slate-300">
                         {std.birthDate ? (
-                          <span className="flex items-center gap-1">
+                          <span className="flex items-center gap-1 font-bold">
                             <Calendar className="w-3.5 h-3.5 text-cyan-500" />
                             {std.birthDate}
                           </span>
@@ -338,7 +374,8 @@ export default function StudentsDirectoryPage() {
                       <img
                         src={std.photoUrl}
                         alt={std.name}
-                        className="w-10 h-10 rounded-2xl object-cover border border-cyan-500 shadow-2xs shrink-0"
+                        onClick={() => setPreviewImageModal({ url: std.photoUrl!, name: std.name, code: std.code })}
+                        className="w-10 h-10 rounded-2xl object-cover border border-cyan-500 shadow-2xs shrink-0 cursor-pointer"
                       />
                     ) : (
                       <span className="w-10 h-10 rounded-2xl bg-brand-50 dark:bg-brand-950 text-brand-600 dark:text-cyan-400 font-mono font-black text-xs flex items-center justify-center">
@@ -365,7 +402,7 @@ export default function StudentsDirectoryPage() {
                 <div className="text-[11px] text-slate-600 dark:text-slate-400 space-y-1 border-t border-slate-100 dark:border-slate-800 pt-2">
                   {std.birthDate && (
                     <div className="flex justify-between">
-                      <span className="flex items-center gap-1">
+                      <span className="flex items-center gap-1 font-semibold">
                         <Calendar className="w-3 h-3 text-cyan-500" />
                         الميلاد:
                       </span>
@@ -428,21 +465,46 @@ export default function StudentsDirectoryPage() {
               </button>
             </div>
 
-            {/* Profile Avatar & Quick Details */}
+            {/* Profile Avatar & Quick Details with Photo Actions */}
             <div className="flex flex-col sm:flex-row items-center gap-4 p-4 rounded-2xl bg-white/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
-              {viewingStudent.photoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={viewingStudent.photoUrl}
-                  alt={viewingStudent.name}
-                  className="w-20 h-20 rounded-2xl object-cover border-2 border-cyan-500 shadow-md shrink-0"
-                />
-              ) : (
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-brand-600 to-cyan-500 text-white flex items-center justify-center font-black text-2xl shadow-md shrink-0">
-                  #{viewingStudent.code}
-                </div>
-              )}
-              <div className="text-center sm:text-right space-y-1 flex-1">
+              <div className="relative group cursor-pointer shrink-0">
+                {viewingStudent.photoUrl ? (
+                  <div
+                    onClick={() =>
+                      setPreviewImageModal({
+                        url: viewingStudent.photoUrl!,
+                        name: viewingStudent.name,
+                        code: viewingStudent.code,
+                      })
+                    }
+                    className="relative w-24 h-24 rounded-2xl overflow-hidden border-2 border-cyan-500 shadow-md group-hover:scale-105 transition"
+                    title="اضغط لتكبير وتحميل الصورة"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={viewingStudent.photoUrl}
+                      alt={viewingStudent.name}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition">
+                      <ZoomIn className="w-6 h-6" />
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => profilePhotoInputRef.current?.click()}
+                    className="w-24 h-24 rounded-2xl bg-gradient-to-br from-brand-600 to-cyan-500 text-white flex flex-col items-center justify-center font-black text-2xl shadow-md cursor-pointer hover:opacity-90"
+                    title="اضغط لرفع صورة للطالب"
+                  >
+                    <span>#{viewingStudent.code}</span>
+                    <span className="text-[9px] font-normal text-cyan-200 flex items-center gap-0.5 mt-1">
+                      <Camera className="w-3 h-3" /> رفع صورة
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="text-center sm:text-right space-y-1.5 flex-1">
                 <h4 className="font-black text-slate-900 dark:text-white text-base">{viewingStudent.name}</h4>
                 <p className="text-xs text-brand-600 dark:text-cyan-400 font-bold">
                   {data.groups.find((g) => g.id === viewingStudent.groupId)?.name || 'غير محدد'}
@@ -451,6 +513,56 @@ export default function StudentsDirectoryPage() {
                   <MapPin className="w-3 h-3 text-rose-500" />
                   <span>{viewingStudent.address || 'المنصورة'}</span>
                 </p>
+
+                {/* Photo Action Row */}
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 pt-1">
+                  {viewingStudent.photoUrl && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPreviewImageModal({
+                            url: viewingStudent.photoUrl!,
+                            name: viewingStudent.name,
+                            code: viewingStudent.code,
+                          })
+                        }
+                        className="px-2.5 py-1 rounded-lg bg-cyan-50 dark:bg-cyan-950/70 hover:bg-cyan-100 text-cyan-700 dark:text-cyan-300 font-bold text-[10px] flex items-center gap-1 border border-cyan-300 dark:border-cyan-800"
+                      >
+                        <Eye className="w-3 h-3" />
+                        <span>معاينة مكبرة</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleDownloadPhoto(viewingStudent.photoUrl!, viewingStudent.name, viewingStudent.code)
+                        }
+                        className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/70 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 font-bold text-[10px] flex items-center gap-1 border border-emerald-300 dark:border-emerald-800"
+                      >
+                        <Download className="w-3 h-3" />
+                        <span>تحميل الصورة 📥</span>
+                      </button>
+                    </>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => profilePhotoInputRef.current?.click()}
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold text-[10px] flex items-center gap-1"
+                  >
+                    <Camera className="w-3 h-3 text-brand-500" />
+                    <span>{viewingStudent.photoUrl ? 'تغيير الصورة' : 'إضافة صورة 📸'}</span>
+                  </button>
+
+                  <input
+                    ref={profilePhotoInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProfilePhotoChange}
+                    className="hidden"
+                  />
+                </div>
               </div>
             </div>
 
@@ -579,6 +691,63 @@ export default function StudentsDirectoryPage() {
         </div>
       )}
 
+      {/* FULL PHOTO LIGHTBOX INSPECTOR MODAL */}
+      {previewImageModal && (
+        <div
+          onClick={() => setPreviewImageModal(null)}
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-ios-spring"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-md w-full bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border border-white/20 p-5 text-center space-y-4"
+          >
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="text-right">
+                <h4 className="text-sm font-black text-white">{previewImageModal.name}</h4>
+                <p className="text-[11px] text-cyan-400 font-mono">كود الطالب: #{previewImageModal.code}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewImageModal(null)}
+                className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="w-full aspect-square rounded-2xl overflow-hidden shadow-inner bg-black flex items-center justify-center border border-white/10">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={previewImageModal.url}
+                alt={previewImageModal.name}
+                className="w-full h-full object-contain"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() =>
+                  handleDownloadPhoto(previewImageModal.url, previewImageModal.name, previewImageModal.code)
+                }
+                className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition active:scale-95"
+              >
+                <Download className="w-4 h-4" />
+                <span>تحميل الصورة لجهازك 📥</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPreviewImageModal(null)}
+                className="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add Student Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -654,7 +823,7 @@ export default function StudentsDirectoryPage() {
               <DateWheelPicker
                 value={newStudentData.birthDate}
                 onChange={(val) => setNewStudentData({ ...newStudentData, birthDate: val })}
-                label="تاريخ الميلاد (بكرة تفاعلية)"
+                label="تاريخ الميلاد"
               />
 
               {/* Photo Upload in Add Modal */}
@@ -815,7 +984,7 @@ export default function StudentsDirectoryPage() {
               <DateWheelPicker
                 value={editingStudent.birthDate || '2009-05-15'}
                 onChange={(val) => setEditingStudent({ ...editingStudent, birthDate: val })}
-                label="تاريخ الميلاد (بكرة تفاعلية)"
+                label="تاريخ الميلاد"
               />
 
               {/* Photo Upload in Edit Modal */}
