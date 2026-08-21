@@ -1,5 +1,21 @@
 import { Student, Group } from '@/types';
 
+function drawRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(x, y, w, h, r);
+  } else {
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+  }
+}
+
 /**
  * Generates an ultra-crisp, high-definition (800x1120px) PNG image of the Student 3D Apple Wallet ID Card
  * using native HTML5 Canvas 2D. This guarantees 100% Arabic text rendering without font overlapping or CSS glitches.
@@ -13,6 +29,12 @@ export async function generateStudentCardCanvas(params: {
 }): Promise<string> {
   const { student, group, qrDataUrl, isPaid, currentMonth } = params;
 
+  if (typeof document !== 'undefined' && document.fonts && typeof document.fonts.ready !== 'undefined') {
+    try {
+      await document.fonts.ready;
+    } catch {}
+  }
+
   const width = 800;
   const height = 1120;
   const canvas = document.createElement('canvas');
@@ -24,15 +46,7 @@ export async function generateStudentCardCanvas(params: {
   // 1. Draw Card Background with Rounded Corners
   const radius = 42;
   ctx.beginPath();
-  ctx.moveTo(radius, 0);
-  ctx.lineTo(width - radius, 0);
-  ctx.quadraticCurveTo(width, 0, width, radius);
-  ctx.lineTo(width, height - radius);
-  ctx.quadraticCurveTo(width, height, width - radius, height);
-  ctx.lineTo(radius, height);
-  ctx.quadraticCurveTo(0, height, 0, height - radius);
-  ctx.lineTo(0, radius);
-  ctx.quadraticCurveTo(0, 0, radius, 0);
+  drawRoundedRect(ctx, 0, 0, width, height, radius);
   ctx.closePath();
   ctx.clip();
 
@@ -106,7 +120,7 @@ export async function generateStudentCardCanvas(params: {
 
   ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
   ctx.beginPath();
-  ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 25);
+  drawRoundedRect(ctx, badgeX, badgeY, badgeW, badgeH, 25);
   ctx.fill();
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
   ctx.lineWidth = 1.5;
@@ -155,7 +169,7 @@ export async function generateStudentCardCanvas(params: {
   
   ctx.fillStyle = isPaid ? 'rgba(16, 185, 129, 0.25)' : 'rgba(244, 63, 94, 0.25)';
   ctx.beginPath();
-  ctx.roundRect(width - 340, subBadgeY, 280, 42, 12);
+  drawRoundedRect(ctx, width - 340, subBadgeY, 280, 42, 12);
   ctx.fill();
   ctx.strokeStyle = isPaid ? 'rgba(52, 211, 153, 0.5)' : 'rgba(251, 113, 133, 0.5)';
   ctx.lineWidth = 1.5;
@@ -173,7 +187,7 @@ export async function generateStudentCardCanvas(params: {
 
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
-  ctx.roundRect(qrBoxX, qrBoxY, qrBoxW, qrBoxH, 28);
+  drawRoundedRect(ctx, qrBoxX, qrBoxY, qrBoxW, qrBoxH, 28);
   ctx.fill();
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
   ctx.lineWidth = 2;
