@@ -73,8 +73,8 @@ const DEFAULT_SETTINGS: SystemSettings = {
   adminPasscode: '2026',
   assistantPhone: '01012345678',
   centerLocation: 'سنتر الأوائل - قاعة 1',
-  telegramBotToken: '',
-  telegramAdminChatId: '',
+  telegramBotToken: '8897471175:AAH__IM1R9Ro2yYdClmtZ_X4TvzFZsr5uUs',
+  telegramAdminChatId: '6602868710',
 };
 
 function generateSecureId(prefix: string): string {

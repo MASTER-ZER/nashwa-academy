@@ -1,4 +1,5 @@
 import { Student, Group } from '@/types';
+import { db } from './storage';
 
 function escapeHtml(text: string): string {
   if (!text) return '';
@@ -10,22 +11,28 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#039;');
 }
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID;
+const DEFAULT_BOT_TOKEN = '8897471175:AAH__IM1R9Ro2yYdClmtZ_X4TvzFZsr5uUs';
+const DEFAULT_ADMIN_CHAT_ID = '6602868710';
 
 export async function sendTelegramMessage(text: string, replyMarkup?: any): Promise<boolean> {
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_ADMIN_CHAT_ID) {
-    console.warn('Telegram environment variables missing, notification skipped.');
-    return false;
+  let botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN || DEFAULT_BOT_TOKEN;
+  let chatId = process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.NEXT_PUBLIC_TELEGRAM_ADMIN_CHAT_ID || DEFAULT_ADMIN_CHAT_ID;
+
+  if (typeof window !== 'undefined') {
+    try {
+      const currentSettings = db.getSettings();
+      if (currentSettings.telegramBotToken) botToken = currentSettings.telegramBotToken;
+      if (currentSettings.telegramAdminChatId) chatId = currentSettings.telegramAdminChatId;
+    } catch {}
   }
 
   try {
-    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        chat_id: TELEGRAM_ADMIN_CHAT_ID,
+        chat_id: chatId,
         text,
         parse_mode: 'HTML',
         reply_markup: replyMarkup,

@@ -52,8 +52,8 @@ export default function SettingsDashboardPage() {
     adminPasscode: '2026',
     assistantPhone: '01012345678',
     centerLocation: 'سنتر الأوائل - قاعة 1',
-    telegramBotToken: '',
-    telegramAdminChatId: '',
+    telegramBotToken: '8897471175:AAH__IM1R9Ro2yYdClmtZ_X4TvzFZsr5uUs',
+    telegramAdminChatId: '6602868710',
   });
 
   const [lastBackup, setLastBackup] = useState<string>('');
@@ -269,7 +269,7 @@ export default function SettingsDashboardPage() {
         body: JSON.stringify({
           message: {
             text: '/stats',
-            chat: { id: settings.telegramAdminChatId },
+            chat: { id: settings.telegramAdminChatId || '6602868710' },
           },
         }),
       });
@@ -291,8 +291,9 @@ export default function SettingsDashboardPage() {
     setIsSendingTg(true);
     setTgTestStatus('جاري ضبط وربط الـ Webhook رسمياً مع تليجرام...');
     try {
+      const botToken = settings.telegramBotToken || '8897471175:AAH__IM1R9Ro2yYdClmtZ_X4TvzFZsr5uUs';
       const webhookUrl = 'https://nashwa-academy.vercel.app/api/telegram';
-      const res = await fetch(`https://api.telegram.org/bot${settings.telegramBotToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}`);
+      const res = await fetch(`https://api.telegram.org/bot${botToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}&secret_token=nashwa_secret_webhook_token_2026`);
       const json = await res.json();
       if (json.ok) {
         setTgTestStatus('🎉 تم ربط الـ Webhook بنجاح! الأزرار التفاعلية في تليجرام تعمل الآن 100%');
