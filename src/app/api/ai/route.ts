@@ -3,37 +3,66 @@ import { NextRequest, NextResponse } from 'next/server';
 const AI_BASE_URL = process.env.AI_API_BASE_URL || 'https://api.bluesminds.com/v1';
 const AI_API_KEY = process.env.AI_API_KEY || 'sk-5tyf1QBli0g53Zxtd7P6EELu3IdVOM5BiEokbv2SnhVf8mYL';
 
-const REASONING_MODEL = 'gpt-4o';
-const CHAT_MODEL = 'gpt-5-mini';
+const CHAT_CASCADE_MODELS = [
+  'gpt-4o',
+  'gpt-5-mini',
+  'meta/llama-3.1-8b-instruct',
+  'nvidia/nemotron-mini-4b-instruct',
+];
 
-async function callOpenAICompatible(messages: { role: string; content: string }[], model = REASONING_MODEL, temperature = 0.7) {
+const REASONING_CASCADE_MODELS = [
+  'gpt-4o',
+  'meta/llama-3.1-8b-instruct',
+  'gpt-5-mini',
+];
+
+async function callOpenAIWithCascade(
+  messages: { role: string; content: string }[],
+  candidateModels: string[] = CHAT_CASCADE_MODELS,
+  temperature = 0.7
+) {
   const endpoint = `${AI_BASE_URL.replace(/\/+$/, '')}/chat/completions`;
+  let lastError: Error | null = null;
 
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${AI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature,
-      max_tokens: 1200,
-    }),
-  });
+  for (const model of candidateModels) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 14000); // 14s timeout per candidate
 
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`AI API error status ${res.status}: ${errorText}`);
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${AI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature,
+          max_tokens: 1200,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const json = await res.json();
+        const reply = json.choices?.[0]?.message?.content;
+        if (reply && reply.trim().length > 0) {
+          return reply.trim();
+        }
+      } else {
+        const errorText = await res.text();
+        console.warn(`Model ${model} returned HTTP ${res.status}:`, errorText);
+      }
+    } catch (err: any) {
+      console.warn(`Model ${model} attempt failed (${err.message}), trying next candidate...`);
+      lastError = err;
+    }
   }
 
-  const json = await res.json();
-  const reply = json.choices?.[0]?.message?.content;
-  if (!reply) {
-    throw new Error('No content returned from AI API');
-  }
-  return reply.trim();
+  throw lastError || new Error('All AI candidate models failed to respond');
 }
 
 export async function POST(req: NextRequest) {
@@ -58,12 +87,12 @@ export async function POST(req: NextRequest) {
 3. وجه ولي الأمر لخطوة محددة (مثل: تكثيف حل الواجبات، الاستمرار في الصدارة، المراجعة الدورية).
 4. لا تضع أي مقدمات فارغة أو عناوين مثل "السيد ولي الأمر"، ابدأ بالتقييم والتوجيه مباشرة.`;
 
-      const recommendation = await callOpenAICompatible(
+      const recommendation = await callOpenAIWithCascade(
         [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `اكتب توصية التقرير الشهري للطالب ${p.studentName}` },
         ],
-        REASONING_MODEL,
+        REASONING_CASCADE_MODELS,
         0.7
       );
 
@@ -106,12 +135,12 @@ export async function POST(req: NextRequest) {
   ]
 }`;
 
-      const rawReply = await callOpenAICompatible(
+      const rawReply = await callOpenAIWithCascade(
         [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `ولد الاختبار الآن حول: ${topic}` },
         ],
-        REASONING_MODEL,
+        REASONING_CASCADE_MODELS,
         0.5
       );
 
@@ -149,7 +178,7 @@ export async function POST(req: NextRequest) {
         })),
       ];
 
-      const reply = await callOpenAICompatible(formattedMessages, CHAT_MODEL, 0.7);
+      const reply = await callOpenAIWithCascade(formattedMessages, CHAT_CASCADE_MODELS, 0.7);
       return NextResponse.json({ success: true, reply });
     }
 

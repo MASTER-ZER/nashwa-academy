@@ -55,13 +55,14 @@ import { generateStudentCardCanvas } from '@/lib/generateCardImage';
 import { generateStudentReportCardCanvas } from '@/lib/generateReportCard';
 import DateWheelPicker from '@/components/DateWheelPicker';
 import { compressStudentPhoto } from '@/lib/imageCompressor';
-import { notifyStudentProfileUpdate } from '@/lib/telegram';
+import { notifyStudentProfileUpdate, notifyProfileEditRequest } from '@/lib/telegram';
 import { fetchStudentAIChat, ChatMessage } from '@/lib/ai';
 
 export default function StudentPortalPage() {
   const [studentCode, setStudentCode] = useState('');
   const [phone, setPhone] = useState('');
   const [currentStudent, setCurrentStudent] = useState<Student | null>(null);
+  const [pendingEditReq, setPendingEditReq] = useState<any>(null);
   const [group, setGroup] = useState<Group | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
@@ -163,6 +164,10 @@ export default function StudentPortalPage() {
     const grp = data.groups.find((g) => g.id === std.groupId) || null;
     setGroup(grp);
 
+    // Check pending profile edit request
+    const pending = db.getStudentPendingEditRequest(std.id);
+    setPendingEditReq(pending);
+
     // Sync Edit Form Data
     setEditFormData({
       name: std.name,
@@ -204,7 +209,7 @@ export default function StudentPortalPage() {
       const settings = db.getSettings();
       const data = db.getData();
       const groupSessions = data.sessions.filter((s) => s.groupId === std.groupId);
-      const totalSessions = Math.max(groupSessions.length, attendance.length, 4);
+      const totalSessions = Math.max(groupSessions.length, attendance.length, 8);
 
       const formattedExams = examResults.map((er) => ({
         exam: er.exam,
@@ -280,17 +285,41 @@ export default function StudentPortalPage() {
     }
   }, [chatMessages, activeTab, isChatLoading]);
 
-  // Initial AI welcome message
+  // Load persistent chat history for this specific student
   useEffect(() => {
-    if (currentStudent && chatMessages.length === 0) {
-      setChatMessages([
-        {
-          role: 'assistant',
-          content: `أهلاً بك يا ${currentStudent.name} 🌸🔬! أنا "المساعد الذكي لمس نشوى". أنا هنا لمساعدتك في مراجعة منهج العلوم المتكاملة للصف الأول الثانوي، شرح أي مفهوم أو مسألة، وتوضيح خطوات الحل بالتفصيل. ماذا تحب أن نذاكر معاً الآن؟`,
-        },
-      ]);
+    if (!currentStudent) return;
+    try {
+      const storageKey = `nashwa_ai_chat_${currentStudent.code}`;
+      const savedChat = localStorage.getItem(storageKey);
+      if (savedChat) {
+        const parsed = JSON.parse(savedChat);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setChatMessages(parsed);
+          return;
+        }
+      }
+      // Default greeting if no history
+      const initialGreeting: ChatMessage = {
+        role: 'assistant',
+        content: `أهلاً بك يا ${currentStudent.name} 🌸🔬! أنا "المساعد الذكي لمس نشوى". أنا معك على مدار الساعة لمساعدتك في مراجعة منهج العلوم المتكاملة للصف الأول الثانوي، شرح أي مفهوم أو مسألة، وتوضيح خطوات الحل بالتفصيل. ماذا تحب أن نذاكر معاً الآن؟`,
+      };
+      setChatMessages([initialGreeting]);
+      localStorage.setItem(storageKey, JSON.stringify([initialGreeting]));
+    } catch (err) {
+      console.warn('Error reading chat history:', err);
     }
-  }, [currentStudent, chatMessages.length]);
+  }, [currentStudent?.code]);
+
+  // Persist chat messages whenever they change
+  useEffect(() => {
+    if (!currentStudent || chatMessages.length === 0) return;
+    try {
+      const storageKey = `nashwa_ai_chat_${currentStudent.code}`;
+      localStorage.setItem(storageKey, JSON.stringify(chatMessages));
+    } catch (err) {
+      console.warn('Error saving chat history:', err);
+    }
+  }, [chatMessages, currentStudent?.code]);
 
   const handleSendChatMessage = async (textToSend?: string) => {
     const text = (textToSend || chatInput).trim();
@@ -303,8 +332,10 @@ export default function StudentPortalPage() {
     setIsChatLoading(true);
 
     try {
+      // Pass the last 12 messages for rich conversational context
+      const contextSlice = updated.slice(-12);
       const reply = await fetchStudentAIChat({
-        messages: updated,
+        messages: contextSlice,
         studentName: currentStudent?.name || 'البطل',
       });
       setChatMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
@@ -323,13 +354,16 @@ export default function StudentPortalPage() {
   };
 
   const handleClearChat = () => {
-    if (confirm('هل ترغب في بدء جلسة مذاكرة جديدة مع المساعد الذكي؟')) {
-      setChatMessages([
-        {
-          role: 'assistant',
-          content: `أهلاً بك مجدداً يا ${currentStudent?.name || 'بطل'}! 🌸🔬 بدأت جلسة مذاكرة جديدة. اسألني عن أي جزء في منهج العلوم المتكاملة.`,
-        },
-      ]);
+    if (!currentStudent) return;
+    if (confirm('هل ترغب في بدء جلسة مذاكرة جديدة ومسح سجل المحادثة السابق؟')) {
+      const freshGreeting: ChatMessage = {
+        role: 'assistant',
+        content: `أهلاً بك مجدداً يا ${currentStudent.name}! 🌸🔬 بدأت جلسة مذاكرة جديدة. اسألني عن أي جزء في منهج العلوم المتكاملة وسأشرحه لك فوراً.`,
+      };
+      setChatMessages([freshGreeting]);
+      try {
+        localStorage.setItem(`nashwa_ai_chat_${currentStudent.code}`, JSON.stringify([freshGreeting]));
+      } catch {}
     }
   };
 
@@ -367,38 +401,53 @@ export default function StudentPortalPage() {
 
     setIsSavingEdit(true);
     try {
-      const updatedStudent: Student = {
-        ...currentStudent,
+      const proposedData = {
         name: editFormData.name.trim(),
         phone: editFormData.phone.trim(),
         parentName: editFormData.parentName.trim() || currentStudent.parentName,
         parentPhone: editFormData.parentPhone.trim() || currentStudent.parentPhone,
         address: editFormData.address.trim() || currentStudent.address,
-        birthDate: editFormData.birthDate || currentStudent.birthDate,
-        photoUrl: editFormData.photoUrl || currentStudent.photoUrl,
+        birthDate: editFormData.birthDate || currentStudent.birthDate || '2009-05-15',
+        photoUrl: editFormData.photoUrl || currentStudent.photoUrl || '',
         groupId: editFormData.groupId || currentStudent.groupId,
       };
 
-      // 1. Update in local DB & Supabase
-      db.updateStudent(currentStudent.id, updatedStudent);
+      const originalData = {
+        name: currentStudent.name,
+        phone: currentStudent.phone,
+        parentName: currentStudent.parentName,
+        parentPhone: currentStudent.parentPhone,
+        address: currentStudent.address,
+        birthDate: currentStudent.birthDate || '',
+        photoUrl: currentStudent.photoUrl || '',
+        groupId: currentStudent.groupId,
+      };
 
-      // 2. Notify Miss Nashwa on Telegram
-      const selectedGrp = groups.find((g) => g.id === updatedStudent.groupId) || group;
-      notifyStudentProfileUpdate(updatedStudent, selectedGrp);
+      // 1. Create Pending Edit Request in Local DB & Supabase
+      const newReq = db.addProfileEditRequest({
+        studentId: currentStudent.id,
+        studentCode: currentStudent.code,
+        originalData,
+        proposedData,
+      });
 
-      setCurrentStudent(updatedStudent);
-      setGroup(selectedGrp || null);
-      setEditSuccessMsg('تم حفظ وتحديث بياناتك بنجاح وإشعار المس فوراً! 🎉');
+      setPendingEditReq(newReq);
+
+      // 2. Notify Miss Nashwa on Telegram with Inline Approve/Reject Buttons
+      const selectedGrp = groups.find((g) => g.id === proposedData.groupId) || group;
+      notifyProfileEditRequest(newReq.id, currentStudent, proposedData, selectedGrp?.name);
+
+      setEditSuccessMsg('تم إرسال طلب تعديل البيانات بنجاح! 🌸 سيتم مراجعة وتطبيق التعديل فور اعتماد مس نشوى له.');
 
       sound.playSuccessChime();
       try {
         confetti({ particleCount: 50, spread: 70, origin: { y: 0.6 } });
       } catch {}
 
-      setTimeout(() => setEditSuccessMsg(''), 5000);
+      setTimeout(() => setEditSuccessMsg(''), 7000);
     } catch (err) {
-      console.error('Update student error:', err);
-      alert('حدث خطأ أثناء حفظ التعديلات، يرجى المحاولة مرة أخرى.');
+      console.error('Submit edit request error:', err);
+      alert('حدث خطأ أثناء إرسال طلب التعديل، يرجى المحاولة مرة أخرى.');
     } finally {
       setIsSavingEdit(false);
     }
@@ -990,9 +1039,21 @@ export default function StudentPortalPage() {
                   <span>تعديل وتحديث بياناتي</span>
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  يمكنك تعديل أرقام الهواتف، العنوان، وتاريخ الميلاد، وسيتم إشعار المس فوراً بالتعديل 🔔
+                  يمكنك تعديل أرقام الهواتف، العنوان، وتاريخ الميلاد، وسيتم إرسال الطلب لمس نشوى لاعتماده وتطبيقه 🔔
                 </p>
               </div>
+
+              {pendingEditReq && pendingEditReq.status === 'PENDING' && (
+                <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 text-xs space-y-1.5 shadow-sm">
+                  <div className="flex items-center gap-2 font-black text-amber-800 dark:text-amber-300">
+                    <Clock className="w-4 h-4 text-amber-500 animate-spin" style={{ animationDuration: '4s' }} />
+                    <span>طلب تعديل بياناتك قيد مراجعة واعتماد مس نشوى ⏳</span>
+                  </div>
+                  <p className="text-[11px] text-amber-700 dark:text-amber-300/80 leading-relaxed">
+                    تم إرسال طلبك بتاريخ ({new Date(pendingEditReq.requestedAt).toLocaleDateString('ar-EG')}) وسيتم تحديث الكارت والبيانات تلقائياً فور موافقة المس.
+                  </p>
+                </div>
+              )}
 
               {editSuccessMsg && (
                 <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-2 animate-bounce">

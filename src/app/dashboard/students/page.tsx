@@ -32,6 +32,9 @@ import {
   Wand2,
   BrainCircuit,
   Loader2,
+  Bell,
+  CheckCheck,
+  UserCheck,
 } from 'lucide-react';
 import Link from 'next/link';
 import DateWheelPicker from '@/components/DateWheelPicker';
@@ -52,6 +55,7 @@ export default function StudentsDirectoryPage() {
   const [isGeneratingAINote, setIsGeneratingAINote] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isPendingEditsModalOpen, setIsPendingEditsModalOpen] = useState(false);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
 
   const addFileInputRef = useRef<HTMLInputElement>(null);
@@ -130,7 +134,7 @@ export default function StudentsDirectoryPage() {
       const grp = data.groups.find((g) => g.id === std.groupId) || null;
       const stdAtt = data.attendance.filter((a) => a.studentId === std.id);
       const groupSessions = data.sessions.filter((s) => s.groupId === std.groupId);
-      const totalSessions = Math.max(groupSessions.length, stdAtt.length, 4);
+      const totalSessions = Math.max(groupSessions.length, stdAtt.length, 8);
 
       const stdExamResults = data.examResults
         .filter((r) => r.studentId === std.id)
@@ -174,7 +178,7 @@ export default function StudentsDirectoryPage() {
     const grp = data.groups.find((g) => g.id === std.groupId) || null;
     const stdAtt = data.attendance.filter((a) => a.studentId === std.id);
     const groupSessions = data.sessions.filter((s) => s.groupId === std.groupId);
-    const totalSessions = Math.max(groupSessions.length, stdAtt.length, 4);
+    const totalSessions = Math.max(groupSessions.length, stdAtt.length, 8);
 
     const stdExamResults = data.examResults
       .filter((r) => r.studentId === std.id)
@@ -208,7 +212,7 @@ export default function StudentsDirectoryPage() {
     const grp = data.groups.find((g) => g.id === std.groupId) || null;
     const stdAtt = data.attendance.filter((a) => a.studentId === std.id);
     const groupSessions = data.sessions.filter((s) => s.groupId === std.groupId);
-    const totalSessions = Math.max(groupSessions.length, stdAtt.length, 4);
+    const totalSessions = Math.max(groupSessions.length, stdAtt.length, 8);
     const attRate = Math.round((stdAtt.length / totalSessions) * 100);
 
     const stdExamResults = data.examResults
@@ -317,6 +321,8 @@ export default function StudentsDirectoryPage() {
     }
   };
 
+  const pendingEditRequests = (data?.profileEditRequests || []).filter((r) => r.status === 'PENDING');
+
   return (
     <div className="space-y-6 py-2">
       {/* Header */}
@@ -332,6 +338,16 @@ export default function StudentsDirectoryPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {pendingEditRequests.length > 0 && (
+            <button
+              onClick={() => setIsPendingEditsModalOpen(true)}
+              className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-black shadow-md shadow-amber-500/20 transition active:scale-95 flex items-center justify-center gap-1.5 animate-pulse"
+            >
+              <Bell className="w-4 h-4" />
+              <span>طلبات التعديل ({pendingEditRequests.length}) 🔔</span>
+            </button>
+          )}
+
           <button
             onClick={() => setIsAddModalOpen(true)}
             className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white text-xs font-black shadow-md shadow-emerald-500/20 transition active:scale-95 flex items-center justify-center gap-2"
@@ -1399,6 +1415,159 @@ export default function StudentsDirectoryPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Pending Profile Edit Requests Review Modal */}
+      {isPendingEditsModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-amber-500/30 rounded-3xl p-5 sm:p-6 max-w-2xl w-full shadow-2xl space-y-4 my-6 text-right">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <Bell className="w-5 h-5 text-amber-500" />
+                  <span>طلبات تعديل بيانات الطلاب ({pendingEditRequests.length})</span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  مراجعة التعديلات المطلوبة من الطلاب وقبولها أو رفضها
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPendingEditsModalOpen(false)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {pendingEditRequests.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 space-y-2">
+                <CheckCircle2 className="w-10 h-10 mx-auto text-emerald-500" />
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  لا توجد أي طلبات تعديل معلقة حالياً! جميع البيانات معتمدة ومحدثة.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+                {pendingEditRequests.map((req) => {
+                  const student = data.students.find((s) => s.id === req.studentId);
+                  const proposedGrp = data.groups.find((g) => g.id === req.proposedData.groupId);
+                  const originalGrp = student ? data.groups.find((g) => g.id === student.groupId) : null;
+
+                  return (
+                    <div
+                      key={req.id}
+                      className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-3"
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="w-8 h-8 rounded-xl bg-brand-600 text-white flex items-center justify-center font-bold text-xs">
+                            {req.proposedData.name.slice(0, 1)}
+                          </span>
+                          <div>
+                            <h4 className="text-xs font-black text-slate-900 dark:text-white">
+                              {student?.name || req.proposedData.name} (#{req.studentCode})
+                            </h4>
+                            <p className="text-[10px] text-slate-400 font-mono">
+                              تاريخ الطلب: {new Date(req.requestedAt).toLocaleDateString('ar-EG')} - {new Date(req.requestedAt).toLocaleTimeString('ar-EG')}
+                            </p>
+                          </div>
+                        </div>
+
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-300">
+                          قيد الانتظار ⏳
+                        </span>
+                      </div>
+
+                      {/* Side by side comparison */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
+                          <p className="text-[10px] font-bold text-slate-400 border-b border-slate-100 dark:border-slate-800 pb-1">
+                            البيانات الحالية:
+                          </p>
+                          <p><strong>الاسم:</strong> {student?.name || '—'}</p>
+                          <p><strong>هاتف الطالب:</strong> <span dir="ltr" className="font-mono">{student?.phone || '—'}</span></p>
+                          <p><strong>ولي الأمر:</strong> {student?.parentName || '—'} (<span dir="ltr" className="font-mono">{student?.parentPhone || '—'}</span>)</p>
+                          <p><strong>المجموعة:</strong> {originalGrp?.name || '—'}</p>
+                          <p><strong>العنوان:</strong> {student?.address || '—'}</p>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-300/40 dark:border-emerald-800/60 space-y-1 text-emerald-900 dark:text-emerald-200">
+                          <p className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 border-b border-emerald-200/60 dark:border-emerald-900/60 pb-1">
+                            التعديل المقترح المطلوب:
+                          </p>
+                          <p><strong>الاسم:</strong> {req.proposedData.name}</p>
+                          <p><strong>هاتف الطالب:</strong> <span dir="ltr" className="font-mono font-bold">{req.proposedData.phone}</span></p>
+                          <p><strong>ولي الأمر:</strong> {req.proposedData.parentName} (<span dir="ltr" className="font-mono font-bold">{req.proposedData.parentPhone}</span>)</p>
+                          <p><strong>المجموعة:</strong> {proposedGrp?.name || '—'}</p>
+                          <p><strong>العنوان:</strong> {req.proposedData.address || '—'}</p>
+                        </div>
+                      </div>
+
+                      {/* Photo Change Preview if any */}
+                      {req.proposedData.photoUrl && req.proposedData.photoUrl !== student?.photoUrl && (
+                        <div className="p-2.5 rounded-xl bg-cyan-50/40 dark:bg-cyan-950/20 border border-cyan-300/40 flex items-center gap-3">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={req.proposedData.photoUrl}
+                            alt="Proposed Photo"
+                            className="w-12 h-12 rounded-xl object-cover border-2 border-cyan-500 shadow-sm"
+                          />
+                          <p className="text-[11px] font-bold text-cyan-800 dark:text-cyan-300">
+                            الطالب أرفق صورة شخصية جديدة يرغب في اعتمادها للكارت 📸
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Action buttons */}
+                      <div className="pt-1 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            db.approveProfileEditRequest(req.id);
+                            loadData();
+                          }}
+                          className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition flex items-center justify-center gap-1 shadow-sm"
+                        >
+                          <CheckCheck className="w-4 h-4" />
+                          <span>قبول التعديل واعتماده ✅</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm('هل أنتِ متأكدة من رفض هذا التعديل؟')) {
+                              db.rejectProfileEditRequest(req.id);
+                              loadData();
+                            }
+                          }}
+                          className="py-2 px-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 dark:text-rose-400 font-bold text-xs border border-rose-200 dark:border-rose-900 transition flex items-center gap-1"
+                        >
+                          <X className="w-4 h-4" />
+                          <span>رفض التعديل ❌</span>
+                        </button>
+
+                        {student && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const cleanParentPhone = student.parentPhone.replace(/\D/g, '').replace(/^0/, '20');
+                              window.open(`https://wa.me/${cleanParentPhone}?text=${encodeURIComponent(`أهلاً بحضرتك أستاذ ${student.parentName}، نتواصل معكم بخصوص طلب تعديل بيانات الطالب (${student.name}) في أكاديمية مس نشوى 🌸`)}`, '_blank');
+                            }}
+                            className="py-2 px-3 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold transition flex items-center gap-1"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            <span>واتساب ولي الأمر</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}

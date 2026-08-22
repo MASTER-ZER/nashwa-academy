@@ -1,4 +1,4 @@
-import { Student, Group, Session, AttendanceRecord, Subscription, Exam, ExamResult, SystemData, SystemSettings } from '@/types';
+import { Student, Group, Session, AttendanceRecord, Subscription, Exam, ExamResult, SystemData, SystemSettings, ProfileEditRequest } from '@/types';
 import { supabase, isSupabaseConfigured } from './supabase';
 import { validateBackupFile } from './validation';
 
@@ -975,6 +975,100 @@ class StorageService {
       this.enqueueOfflineSync({ table: 'students', action: 'DELETE', payload: {}, matchKey: 'id', matchVal: id });
     }
     return true;
+  }
+
+  // --- Profile Edit Requests (Pending Approval Workflow) ---
+  public addProfileEditRequest(req: {
+    studentId: string;
+    studentCode: string;
+    originalData: ProfileEditRequest['originalData'];
+    proposedData: ProfileEditRequest['proposedData'];
+    notes?: string;
+  }): ProfileEditRequest {
+    const data = this.getData();
+    const newReq: ProfileEditRequest = {
+      id: generateSecureId('req'),
+      studentId: req.studentId,
+      studentCode: req.studentCode,
+      originalData: req.originalData,
+      proposedData: req.proposedData,
+      status: 'PENDING',
+      requestedAt: new Date().toISOString(),
+      notes: req.notes,
+    };
+
+    if (!data.profileEditRequests) {
+      data.profileEditRequests = [];
+    }
+
+    // Keep only the newest pending request for this student
+    data.profileEditRequests = [
+      newReq,
+      ...data.profileEditRequests.filter((r) => r.studentId !== req.studentId || r.status !== 'PENDING'),
+    ];
+
+    this.saveData(data);
+    return newReq;
+  }
+
+  public approveProfileEditRequest(requestId: string): boolean {
+    const data = this.getData();
+    if (!data.profileEditRequests) return false;
+    const req = data.profileEditRequests.find((r) => r.id === requestId);
+    if (!req) return false;
+
+    req.status = 'APPROVED';
+    req.reviewedAt = new Date().toISOString();
+
+    // Apply proposed changes to the student record
+    const studentIdx = data.students.findIndex((s) => s.id === req.studentId);
+    if (studentIdx !== -1) {
+      data.students[studentIdx] = {
+        ...data.students[studentIdx],
+        name: req.proposedData.name,
+        phone: req.proposedData.phone,
+        parentName: req.proposedData.parentName,
+        parentPhone: req.proposedData.parentPhone,
+        address: req.proposedData.address,
+        birthDate: req.proposedData.birthDate,
+        photoUrl: req.proposedData.photoUrl || data.students[studentIdx].photoUrl,
+        groupId: req.proposedData.groupId || data.students[studentIdx].groupId,
+      };
+
+      const payload = studentToDb(data.students[studentIdx]);
+      if (supabase && this.isOnline()) {
+        supabase.from('students').update(payload).eq('id', req.studentId).then(() => {}, (err) => {
+          this.enqueueOfflineSync({ table: 'students', action: 'UPDATE', payload, matchKey: 'id', matchVal: req.studentId });
+        });
+      } else {
+        this.enqueueOfflineSync({ table: 'students', action: 'UPDATE', payload, matchKey: 'id', matchVal: req.studentId });
+      }
+    }
+
+    this.saveData(data);
+    return true;
+  }
+
+  public rejectProfileEditRequest(requestId: string): boolean {
+    const data = this.getData();
+    if (!data.profileEditRequests) return false;
+    const req = data.profileEditRequests.find((r) => r.id === requestId);
+    if (!req) return false;
+
+    req.status = 'REJECTED';
+    req.reviewedAt = new Date().toISOString();
+    this.saveData(data);
+    return true;
+  }
+
+  public getPendingEditRequests(): ProfileEditRequest[] {
+    const data = this.getData();
+    return (data.profileEditRequests || []).filter((r) => r.status === 'PENDING');
+  }
+
+  public getStudentPendingEditRequest(studentId: string): ProfileEditRequest | null {
+    const data = this.getData();
+    return (data.profileEditRequests || []).find((r) => r.studentId === studentId && r.status === 'PENDING') || null;
   }
 
   public markExamNotificationSent(resultId: string, type: 'student' | 'parent'): void {

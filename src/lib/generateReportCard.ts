@@ -229,8 +229,8 @@ export async function generateStudentReportCardCanvas(params: {
   const statsY = 385;
   const statBoxWidth = (width - 120 - 30) / 3;
 
-  // Box 1: Attendance
-  const effectiveTotal = Math.max(totalSessionsCount, attendanceCount, 1);
+  // Box 1: Attendance (Standard 8 sessions per month)
+  const effectiveTotal = Math.max(totalSessionsCount || 8, attendanceCount, 8);
   const attendancePercent = Math.min(100, Math.round((attendanceCount / effectiveTotal) * 100));
 
   ctx.save();
@@ -279,7 +279,7 @@ export async function generateStudentReportCardCanvas(params: {
   ctx.fillText('المعدل الأكاديمي والامتحانات', box2X + statBoxWidth - 25, statsY + 35);
 
   ctx.fillStyle = '#60a5fa';
-  ctx.font = 'bold 28px Cairo, sans-serif';
+  ctx.font = 'bold 26px Cairo, sans-serif';
   ctx.fillText(`${avgPercent}% - ${gradeLabel}`, box2X + statBoxWidth - 25, statsY + 75);
 
   ctx.fillStyle = '#93c5fd';
@@ -302,7 +302,7 @@ export async function generateStudentReportCardCanvas(params: {
   ctx.fillText('اشتراك شهر ' + monthName, box3X + statBoxWidth - 25, statsY + 35);
 
   ctx.fillStyle = isPaid ? '#34d399' : '#f87171';
-  ctx.font = 'bold 26px Cairo, sans-serif';
+  ctx.font = 'bold 24px Cairo, sans-serif';
   ctx.fillText(isPaid ? 'مسدد بالكامل ✅' : 'مستحق السداد ⚠️', box3X + statBoxWidth - 25, statsY + 75);
 
   ctx.fillStyle = isPaid ? '#6ee7b7' : '#fca5a5';
@@ -324,11 +324,11 @@ export async function generateStudentReportCardCanvas(params: {
   ctx.fill();
 
   ctx.fillStyle = '#a7f3d0';
-  ctx.font = 'bold 15px Cairo, sans-serif';
-  ctx.fillText('عنوان الاختبار / التقييم', width - 85, tableHeaderY + 31);
-  ctx.fillText('الدرجة المحققة', width - 380, tableHeaderY + 31);
-  ctx.fillText('النسبة والتقدير', width - 560, tableHeaderY + 31);
-  ctx.fillText('ملاحظة المعلمة', width - 720, tableHeaderY + 31);
+  ctx.font = 'bold 14px Cairo, sans-serif';
+  ctx.fillText('عنوان الاختبار / التقييم', width - 85, tableHeaderY + 30);
+  ctx.fillText('الدرجة المحققة', width - 390, tableHeaderY + 30);
+  ctx.fillText('النسبة والتقدير', width - 530, tableHeaderY + 30);
+  ctx.fillText('ملاحظة المعلمة', width - 675, tableHeaderY + 30);
   ctx.restore();
 
   let curRowY = tableHeaderY + 58;
@@ -350,27 +350,27 @@ export async function generateStudentReportCardCanvas(params: {
 
       // Exam Title
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 15px Cairo, sans-serif';
-      const title = er.exam.title.length > 25 ? er.exam.title.slice(0, 25) + '...' : er.exam.title;
+      ctx.font = 'bold 14px Cairo, sans-serif';
+      const title = er.exam.title.length > 22 ? er.exam.title.slice(0, 22) + '...' : er.exam.title;
       ctx.fillText(title, width - 85, curRowY + 32);
 
       // Score
       ctx.fillStyle = '#34d399';
-      ctx.font = 'bold 16px Cairo, sans-serif';
-      ctx.fillText(`${er.result.score} / ${er.exam.maxScore}`, width - 380, curRowY + 32);
+      ctx.font = 'bold 15px Cairo, sans-serif';
+      ctx.fillText(`${er.result.score} / ${er.exam.maxScore}`, width - 390, curRowY + 32);
 
       // Percentage
       const p = Math.round((er.result.score / er.exam.maxScore) * 100);
       ctx.fillStyle = p >= 85 ? '#60a5fa' : p >= 65 ? '#fbbf24' : '#f87171';
-      ctx.font = 'bold 15px Cairo, sans-serif';
-      ctx.fillText(`${p}%`, width - 560, curRowY + 32);
+      ctx.font = 'bold 14px Cairo, sans-serif';
+      ctx.fillText(`${p}%`, width - 530, curRowY + 32);
 
-      // Feedback
+      // Feedback (Bounded safely)
       ctx.fillStyle = '#cbd5e1';
-      ctx.font = '13px Cairo, sans-serif';
-      const fb = er.result.feedback || 'أداء ممتاز، استمر!';
-      const shortFb = fb.length > 20 ? fb.slice(0, 20) + '...' : fb;
-      ctx.fillText(shortFb, width - 720, curRowY + 32);
+      ctx.font = '12px Cairo, sans-serif';
+      const fb = er.result.feedback || 'أداء ممتاز!';
+      const shortFb = fb.length > 16 ? fb.slice(0, 16) + '...' : fb;
+      ctx.fillText(shortFb, width - 675, curRowY + 32);
 
       ctx.restore();
       curRowY += 60;
@@ -388,50 +388,51 @@ export async function generateStudentReportCardCanvas(params: {
   ctx.fill();
   ctx.stroke();
 
-  // Teacher Endorsement Quote
+  // Teacher Endorsement Quote Header
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 18px Cairo, sans-serif';
-  ctx.fillText('💬 كلمة وتوجيه المعلمة لولي الأمر:', width - 90, footerY + 45);
+  ctx.font = 'bold 17px Cairo, sans-serif';
+  ctx.fillText('💬 كلمة وتوجيه المعلمة لولي الأمر:', width - 90, footerY + 40);
 
   ctx.fillStyle = '#cbd5e1';
-  ctx.font = '14px Cairo, sans-serif';
+  ctx.font = '13px Cairo, sans-serif';
   const customComment = customNote?.trim() || (
     avgPercent >= 85
       ? `نبارك لولي الأمر على تفوق الطالب (${student.name}) والتزامه المتميز في الحصص والامتحانات، ونتمنى له دوام النجاح.`
       : `نرجو من ولي أمر الطالب (${student.name}) متابعة مراجعة دروس العلوم المتكاملة وحل الواجبات لرفع المستوى في الاختبار القادم.`
   );
 
-  // Wrap note text into 2 lines if longer than 65 characters
-  if (customComment.length > 70) {
-    const words = customComment.split(' ');
-    let line1 = '';
-    let line2 = '';
-    for (const w of words) {
-      if ((line1 + ' ' + w).length <= 65) {
-        line1 += (line1 ? ' ' : '') + w;
-      } else {
-        line2 += (line2 ? ' ' : '') + w;
-      }
+  // Dynamic Word-Wrapping with max width leaving room for the left stamp
+  const maxNoteWidth = 510;
+  const words = customComment.split(' ');
+  const wrappedLines: string[] = [];
+  let curLine = '';
+
+  for (const w of words) {
+    const testLine = curLine ? `${curLine} ${w}` : w;
+    if (ctx.measureText(testLine).width <= maxNoteWidth) {
+      curLine = testLine;
+    } else {
+      if (curLine) wrappedLines.push(curLine);
+      curLine = w;
     }
-    ctx.fillText(line1, width - 90, footerY + 75);
-    if (line2) {
-      ctx.fillText(line2, width - 90, footerY + 100);
-    }
-  } else {
-    ctx.fillText(customComment, width - 90, footerY + 80);
   }
+  if (curLine) wrappedLines.push(curLine);
+
+  wrappedLines.slice(0, 3).forEach((line, idx) => {
+    ctx.fillText(line, width - 90, footerY + 68 + idx * 22);
+  });
 
   // Signatures & Official Stamp
-  const signY = footerY + 140;
+  const signY = footerY + 150;
 
   // Teacher Name
   ctx.fillStyle = '#34d399';
-  ctx.font = 'bold 18px Cairo, sans-serif';
+  ctx.font = 'bold 17px Cairo, sans-serif';
   ctx.fillText(`معلمة المادة: ${teacherName}`, width - 90, signY);
 
   ctx.fillStyle = '#94a3b8';
-  ctx.font = '13px Cairo, sans-serif';
-  ctx.fillText('توقيع واعتماد الأكاديمية ✍️', width - 90, signY + 30);
+  ctx.font = '12px Cairo, sans-serif';
+  ctx.fillText('توقيع واعتماد الأكاديمية ✍️', width - 90, signY + 26);
 
   // Official Gold Stamp Graphic (Left Side)
   const stampX = 140;

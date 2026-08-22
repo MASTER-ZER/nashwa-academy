@@ -52,20 +52,12 @@ export default function RootLayout({
           {/* Mobile Bottom Navigation Capsule */}
           <MobileBottomNav />
 
-          {/* Discreet Admin Link in Footer */}
+          {/* Public Footer */}
           <footer className="mt-auto border-t border-slate-200/60 dark:border-slate-800/60 py-4 text-center text-xs text-slate-500 dark:text-slate-400 no-print pb-20 md:pb-4">
-            <div className="max-w-[1280px] mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+            <div className="max-w-[1280px] mx-auto px-4 flex items-center justify-center text-center">
               <p className="font-semibold">
                 جميع الحقوق محفوظة © {new Date().getFullYear()} لأكاديمية مس نشوى - العلوم المتكاملة
               </p>
-              <div className="flex items-center gap-3">
-                <a
-                  href="/dashboard"
-                  className="font-bold text-brand-600 dark:text-cyan-400 hover:underline flex items-center gap-1 transition"
-                >
-                  لوحة الإدارة 🔒
-                </a>
-              </div>
             </div>
           </footer>
         </ThemeProvider>

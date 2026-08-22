@@ -8,7 +8,7 @@ export async function compressStudentPhoto(file: File): Promise<string> {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const size = 300;
+        const size = 700; // Crystal clear HD for retina screens and print cards
         canvas.width = size;
         canvas.height = size;
         const ctx = canvas.getContext('2d');
@@ -17,13 +17,15 @@ export async function compressStudentPhoto(file: File): Promise<string> {
           return;
         }
 
-        // Center Crop
+        // Center Crop to square
         const minDim = Math.min(img.width, img.height);
         const startX = (img.width - minDim) / 2;
         const startY = (img.height - minDim) / 2;
 
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, startX, startY, minDim, minDim, 0, 0, size, size);
-        const compressed = canvas.toDataURL('image/jpeg', 0.82);
+        const compressed = canvas.toDataURL('image/jpeg', 0.90);
         resolve(compressed);
       };
       img.onerror = () => reject(new Error('Failed to load image'));

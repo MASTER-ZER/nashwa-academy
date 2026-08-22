@@ -78,6 +78,36 @@ export interface ExamResult {
   gradedAt: string;
 }
 
+export interface ProfileEditRequest {
+  id: string;
+  studentId: string;
+  studentCode: string;
+  originalData: {
+    name: string;
+    phone: string;
+    parentName: string;
+    parentPhone: string;
+    address: string;
+    birthDate: string;
+    photoUrl?: string;
+    groupId: string;
+  };
+  proposedData: {
+    name: string;
+    phone: string;
+    parentName: string;
+    parentPhone: string;
+    address: string;
+    birthDate: string;
+    photoUrl?: string;
+    groupId: string;
+  };
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  requestedAt: string;
+  reviewedAt?: string;
+  notes?: string;
+}
+
 export interface SystemSettings {
   teacherName: string;
   subjectName: string;
@@ -99,6 +129,7 @@ export interface SystemData {
   subscriptions: Subscription[];
   exams: Exam[];
   examResults: ExamResult[];
+  profileEditRequests?: ProfileEditRequest[];
   settings?: SystemSettings;
   lastBackupDate?: string;
 }

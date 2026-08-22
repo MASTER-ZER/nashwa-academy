@@ -146,6 +146,80 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ ok: true });
       }
+
+      // --- 1.1 Approve Profile Edit Request ---
+      if (action === 'approve_edit') {
+        const reqId = parts[1];
+        if (supabase) {
+          // Fetch request details
+          const { data: editReq } = await supabase
+            .from('profile_edit_requests')
+            .select('*')
+            .eq('id', reqId)
+            .maybeSingle();
+
+          if (editReq && editReq.proposed_data) {
+            const proposed = editReq.proposed_data;
+            await supabase
+              .from('students')
+              .update({
+                name: proposed.name,
+                phone: proposed.phone,
+                parent_name: proposed.parentName,
+                parent_phone: proposed.parentPhone,
+                address: proposed.address,
+                birth_date: proposed.birthDate,
+                photo_url: proposed.photoUrl,
+                group_id: proposed.groupId,
+              })
+              .eq('id', editReq.student_id);
+
+            await supabase
+              .from('profile_edit_requests')
+              .update({
+                status: 'APPROVED',
+                reviewed_at: new Date().toISOString(),
+              })
+              .eq('id', reqId);
+          }
+        }
+
+        await answerCallbackQuery(
+          callbackQuery.id,
+          'تم اعتماد وتحديث بيانات الطالب بنجاح! 🌸✅',
+          true
+        );
+
+        const updatedText = `${originalText}\n\n✅ <b>تم قبول واعتماد تعديل البيانات بواسطة مس نشوى 🌸</b> (${new Date().toLocaleTimeString('ar-EG')})`;
+        await editMessageText(chatId, messageId, updatedText);
+
+        return NextResponse.json({ ok: true });
+      }
+
+      // --- 1.2 Reject Profile Edit Request ---
+      if (action === 'reject_edit') {
+        const reqId = parts[1];
+        if (supabase) {
+          await supabase
+            .from('profile_edit_requests')
+            .update({
+              status: 'REJECTED',
+              reviewed_at: new Date().toISOString(),
+            })
+            .eq('id', reqId);
+        }
+
+        await answerCallbackQuery(
+          callbackQuery.id,
+          'تم رفض طلب تعديل البيانات ❌',
+          false
+        );
+
+        const updatedText = `${originalText}\n\n❌ <b>تم رفض طلب تعديل البيانات بواسطة مس نشوى</b>`;
+        await editMessageText(chatId, messageId, updatedText);
+
+        return NextResponse.json({ ok: true });
+      }
     }
 
     // 2. Handle Direct Commands (/start, /stats, /link)

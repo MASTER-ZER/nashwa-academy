@@ -202,3 +202,69 @@ export async function notifyStudentProfileUpdate(
   return sendTelegramMessage(messageText, inlineKeyboard);
 }
 
+export async function notifyProfileEditRequest(
+  reqId: string,
+  student: Student,
+  proposed: {
+    name: string;
+    phone: string;
+    parentName: string;
+    parentPhone: string;
+    address: string;
+    birthDate: string;
+    photoUrl?: string;
+    groupId: string;
+  },
+  groupName?: string
+) {
+  const cleanParentPhone = proposed.parentPhone.replace(/\D/g, '').replace(/^0/, '20');
+
+  const messageText = `
+✏️ <b>طلب تعديل بيانات طالب (#${escapeHtml(student.code)}) بحاجة لموافقتك</b> 🌸
+
+👤 <b>اسم الطالب:</b> ${escapeHtml(proposed.name)} ${proposed.name !== student.name ? `<i>(سابقاً: ${escapeHtml(student.name)})</i>` : ''}
+🔢 <b>كود الطالب:</b> <code>#${escapeHtml(student.code)}</code>
+📞 <b>هاتف الطالب:</b> <code>${escapeHtml(proposed.phone)}</code> ${proposed.phone !== student.phone ? `<i>(سابقاً: ${escapeHtml(student.phone)})</i>` : ''}
+👨‍👦 <b>ولي الأمر:</b> ${escapeHtml(proposed.parentName)} (<code>${escapeHtml(proposed.parentPhone)}</code>) ${proposed.parentPhone !== student.parentPhone ? `<i>(سابقاً: ${escapeHtml(student.parentPhone)})</i>` : ''}
+🎂 <b>تاريخ الميلاد:</b> <code>${escapeHtml(proposed.birthDate || 'غير مسجل')}</code>
+📍 <b>العنوان:</b> ${escapeHtml(proposed.address || 'غير مسجل')}
+⏰ <b>المجموعة:</b> ${escapeHtml(groupName || 'غير محدد')}
+🕒 <b>وقت تقديم الطلب:</b> ${new Date().toLocaleDateString('ar-EG')} - ${new Date().toLocaleTimeString('ar-EG')}
+
+⚠️ <i>لن يتم تطبيق التعديلات على حساب الطالب إلا بعد موافقتك.</i>
+`;
+
+  const inlineKeyboard = {
+    inline_keyboard: [
+      [
+        {
+          text: '✅ قبول التعديل واعتماده',
+          callback_data: `approve_edit:${reqId}`,
+        },
+        {
+          text: '❌ رفض التعديل',
+          callback_data: `reject_edit:${reqId}`,
+        },
+      ],
+      [
+        {
+          text: '📂 لوحة تحكم الطلاب',
+          url: 'https://nashwa-academy.vercel.app/dashboard/students',
+        },
+        {
+          text: '💬 واتساب ولي الأمر',
+          url: `https://wa.me/${cleanParentPhone}?text=${encodeURIComponent(
+            `أهلاً بحضرتك أستاذ ${proposed.parentName}، نرحب بحضرتكم من أكاديمية مس نشوى 🌸`
+          )}`,
+        },
+      ],
+    ],
+  };
+
+  if (proposed.photoUrl) {
+    return sendTelegramPhoto(proposed.photoUrl, messageText, inlineKeyboard);
+  }
+
+  return sendTelegramMessage(messageText, inlineKeyboard);
+}
+
