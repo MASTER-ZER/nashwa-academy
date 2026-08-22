@@ -47,6 +47,7 @@ import {
   Copy,
   CheckCheck,
   Trash2,
+  Search,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import QRCode from 'qrcode';
@@ -103,9 +104,33 @@ export default function StudentPortalPage() {
   const [editErrors, setEditErrors] = useState<Record<string, string>>({});
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
 
+  // Forgot Code Recovery States
+  const [isForgotCodeModalOpen, setIsForgotCodeModalOpen] = useState(false);
+  const [forgotPhoneQuery, setForgotPhoneQuery] = useState('');
+  const [forgotSearchResults, setForgotSearchResults] = useState<Student[] | null>(null);
+
   const barcodeSvgRef = useRef<SVGSVGElement | null>(null);
   const editGalleryInputRef = useRef<HTMLInputElement>(null);
   const editCameraInputRef = useRef<HTMLInputElement>(null);
+
+  const handleSearchForgotCode = (e: React.FormEvent) => {
+    e.preventDefault();
+    const query = forgotPhoneQuery.trim().replace(/\s+/g, '');
+    if (!query) return;
+
+    const data = db.getData();
+    const matches = data.students.filter((s) => {
+      const p1 = (s.phone || '').replace(/\D/g, '');
+      const p2 = (s.parentPhone || '').replace(/\D/g, '');
+      const cleanQ = query.replace(/\D/g, '');
+      return (
+        (cleanQ.length >= 4 && (p1.endsWith(cleanQ) || p2.endsWith(cleanQ) || p1.includes(cleanQ) || p2.includes(cleanQ))) ||
+        s.name.includes(query)
+      );
+    });
+
+    setForgotSearchResults(matches);
+  };
 
   // Auto-login from localStorage if available
   useEffect(() => {
@@ -555,8 +580,139 @@ export default function StudentPortalPage() {
                 <UserCheck className="w-4 h-4" />
                 <span>دخول وعرض بطاقة الطالب 🚀</span>
               </button>
+
+              <div className="pt-2 flex items-center justify-between border-t border-slate-200/60 dark:border-slate-800 text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsForgotCodeModalOpen(true);
+                    setForgotPhoneQuery('');
+                    setForgotSearchResults(null);
+                  }}
+                  className="text-brand-600 dark:text-cyan-400 font-bold hover:underline flex items-center gap-1"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  <span>نسيت الكود؟ استرجعه برقم الهاتف 🔍</span>
+                </button>
+
+                <a
+                  href={`https://wa.me/201012345678?text=${encodeURIComponent('أهلاً مس نشوى، أرغب بالاستفسار عن كود الطالب الخاص بي ومعي صورة الكارت القديم 🌸')}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 font-bold flex items-center gap-1"
+                >
+                  <MessageCircle className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>مساعدة واتساب</span>
+                </a>
+              </div>
             </form>
           </div>
+
+          {/* Forgot Code Recovery Modal */}
+          {isForgotCodeModalOpen && (
+            <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 text-right animate-ios-spring">
+                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                  <div className="flex items-center gap-2 font-black text-slate-900 dark:text-white text-base">
+                    <Search className="w-5 h-5 text-brand-600 dark:text-cyan-400" />
+                    <span>استرجاع كود الطالب والبطاقة</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsForgotCodeModalOpen(false)}
+                    className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  أدخل رقم هاتف الطالب أو ولي الأمر المسجل للبحث عن كودك والدخول فوراً:
+                </p>
+
+                <form onSubmit={handleSearchForgotCode} className="space-y-3">
+                  <div className="relative">
+                    <input
+                      type="tel"
+                      dir="ltr"
+                      required
+                      placeholder="مثال: 01012345678 أو 5678"
+                      value={forgotPhoneQuery}
+                      onChange={(e) => setForgotPhoneQuery(e.target.value)}
+                      className="w-full pl-3.5 pr-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-center text-sm font-bold focus:outline-none focus:border-brand-500"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2"
+                  >
+                    <Search className="w-4 h-4" />
+                    <span>بحث عن بيانات الطالب</span>
+                  </button>
+                </form>
+
+                {forgotSearchResults !== null && (
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                    {forgotSearchResults.length === 0 ? (
+                      <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-200 text-xs space-y-2 text-center">
+                        <p className="font-bold">لم نتمكن من العثور على طالب مسجل بهذا الرقم ⚠️</p>
+                        <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                          تأكد من كتابة الرقم بشكل صحيح، أو أرسل صورة الكارت القديم للمس عبر واتساب للتحقق وتفعيل حسابك.
+                        </p>
+                        <a
+                          href={`https://wa.me/201012345678?text=${encodeURIComponent(`أهلاً مس نشوى، نسيت كود الطالب ورقم هاتفي ${forgotPhoneQuery}، وسأرسل لحضرتك صورة الكارت القديم للتحقق 🌸`)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-sm w-full mt-1"
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                          <span>إرسال صورة الكارت القديم على واتساب 💬</span>
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-[11px] font-bold text-slate-500">تم العثور على الطالب التالي:</p>
+                        {forgotSearchResults.map((std) => (
+                          <div
+                            key={std.id}
+                            className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h4 className="font-black text-xs text-slate-900 dark:text-white">{std.name}</h4>
+                                <p className="text-[10px] text-slate-500 font-mono">هاتف: {std.phone}</p>
+                              </div>
+                              <span className="px-3 py-1 rounded-xl bg-brand-600 text-white font-mono font-black text-xs shadow-xs">
+                                #{std.code}
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStudentCode(std.code);
+                                setPhone(std.phone);
+                                setIsForgotCodeModalOpen(false);
+                                setCurrentStudent(std);
+                                localStorage.setItem('logged_student_code', std.code);
+                                localStorage.setItem('logged_student_phone', std.phone);
+                                loadStudentData(std.code);
+                              }}
+                              className="w-full py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-1"
+                            >
+                              <UserCheck className="w-3.5 h-3.5" />
+                              <span>دخول مباشر بهذا الحساب 🚀</span>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         /* 2. LOGGED IN STUDENT DASHBOARD */

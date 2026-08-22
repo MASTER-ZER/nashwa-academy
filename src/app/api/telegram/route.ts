@@ -90,7 +90,8 @@ export async function POST(req: NextRequest) {
       const studentCode = parts[2] || '';
       const safeCode = escapeHtml(studentCode);
 
-      if (action === 'approve') {
+      if (action === 'approve' || action === 'approve_paid' || action === 'approve_unpaid') {
+        const isPaid = action === 'approve_paid';
         const currentMonth = getCurrentMonthLabel();
 
         // Update Supabase
@@ -103,7 +104,7 @@ export async function POST(req: NextRequest) {
             })
             .eq('id', studentId);
 
-          // Add Dynamic Month subscription (250 EGP)
+          // Add Month subscription (250 EGP)
           const monthSlug = currentMonth.replace(/\s+/g, '-');
           await supabase.from('subscriptions').upsert(
             {
@@ -111,21 +112,21 @@ export async function POST(req: NextRequest) {
               student_id: studentId,
               month: currentMonth,
               amount: 250.0,
-              is_paid: false,
+              is_paid: isPaid,
+              paid_at: isPaid ? new Date().toISOString() : null,
+              received_by: isPaid ? 'مس نشوى' : null,
             },
             { onConflict: 'id' }
           );
         }
 
-        await answerCallbackQuery(
-          callbackQuery.id,
-          `تم قبول الطالب وتفعيل كارت الحضور رقم #${safeCode} بنجاح! 🎉`,
-          true
-        );
+        const successText = isPaid
+          ? `تم قبول الطالب وتفعيل كارت الحضور رقم #${safeCode} وتأكيد اشتراك ${currentMonth} (مدفوع) بنجاح! 🎉`
+          : `تم قبول الطالب وتفعيل كارت الحضور رقم #${safeCode} (الاشتراك معلق لحين الحضور) بنجاح! 🌸`;
 
-        const updatedText = `${originalText}\n\n✅ <b>تم اعتماد وقبول الطالب بنجاح بواسطة المس نشوى</b> (${new Date().toLocaleTimeString(
-          'ar-EG'
-        )})`;
+        await answerCallbackQuery(callbackQuery.id, successText, true);
+
+        const updatedText = `${originalText}\n\n✅ <b>تم اعتماد وقبول الطالب بواسطة المس نشوى</b> (${isPaid ? 'الاشتراك مدفوع ✅' : 'الاشتراك معلق ⏳'}) - ${new Date().toLocaleTimeString('ar-EG')}`;
         await editMessageText(chatId, messageId, updatedText);
 
         return NextResponse.json({ ok: true });

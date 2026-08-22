@@ -957,9 +957,41 @@ class StorageService {
     return data.students[index];
   }
 
-  public approveStudent(id: string): boolean {
+  public approveStudent(id: string, markSubscriptionPaid = false): boolean {
     const res = this.updateStudent(id, { status: 'ACTIVE' });
-    return res !== null;
+    if (!res) return false;
+
+    const curMonth = getCurrentMonthLabel();
+    const data = this.getData();
+    const subIndex = data.subscriptions.findIndex((s) => s.studentId === id && s.month === curMonth);
+    const price = data.settings?.subscriptionPrice || 250;
+
+    if (subIndex === -1) {
+      const newSub: Subscription = {
+        id: generateSecureId(`sub-${id}`),
+        studentId: id,
+        month: curMonth,
+        amount: price,
+        isPaid: markSubscriptionPaid,
+        paidAt: markSubscriptionPaid ? new Date().toISOString() : undefined,
+        receivedBy: markSubscriptionPaid ? 'مس نشوى' : undefined,
+      };
+      data.subscriptions.push(newSub);
+      this.saveData(data);
+
+      const dbSub = subscriptionToDb(newSub);
+      if (supabase && this.isOnline()) {
+        supabase.from('subscriptions').insert(dbSub).then(() => {}, (err) => {
+          this.enqueueOfflineSync({ table: 'subscriptions', action: 'INSERT', payload: dbSub });
+        });
+      } else {
+        this.enqueueOfflineSync({ table: 'subscriptions', action: 'INSERT', payload: dbSub });
+      }
+    } else if (markSubscriptionPaid && !data.subscriptions[subIndex].isPaid) {
+      this.toggleSubscription(id, curMonth, 'مس نشوى');
+    }
+
+    return true;
   }
 
   public rejectStudent(id: string): boolean {

@@ -491,6 +491,30 @@ export default function StudentsDirectoryPage() {
                         </span>
                       </td>
                       <td className="p-4 text-center space-x-1 space-x-reverse">
+                        {std.status === 'PENDING' && (
+                          <>
+                            <button
+                              onClick={() => {
+                                db.approveStudent(std.id, true);
+                                loadData();
+                              }}
+                              className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black transition shadow-xs"
+                              title="قبول واعتماد الطالب مع تفعيل اشتراك الشهر (مدفوع) ✅"
+                            >
+                              قبول+دفع ✅
+                            </button>
+                            <button
+                              onClick={() => {
+                                db.approveStudent(std.id, false);
+                                loadData();
+                              }}
+                              className="p-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white text-[10px] font-black transition shadow-xs"
+                              title="قبول الحساب فقط (الاشتراك معلق) ⏳"
+                            >
+                              قبول فقط ⏳
+                            </button>
+                          </>
+                        )}
                         <button
                           onClick={() => handleOpenReportCard(std)}
                           className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 transition"
@@ -823,6 +847,43 @@ export default function StudentsDirectoryPage() {
                 </div>
               </div>
             </div>
+
+            {/* Pending Student Approval Banner */}
+            {viewingStudent.status === 'PENDING' && (
+              <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 space-y-2.5">
+                <div className="flex items-center gap-1.5 font-black text-xs text-amber-900 dark:text-amber-200">
+                  <Clock className="w-4 h-4 text-amber-500" />
+                  <span>طلب تسجيل هذا الطالب قيد الانتظار:</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      db.approveStudent(viewingStudent.id, true);
+                      loadData();
+                      setViewingStudent((prev) => (prev ? { ...prev, status: 'ACTIVE' } : null));
+                    }}
+                    className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-sm flex items-center justify-center gap-1"
+                  >
+                    <CheckCheck className="w-4 h-4" />
+                    <span>قبول + تفعيل اشتراك الشهر (مدفوع) ✅</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      db.approveStudent(viewingStudent.id, false);
+                      loadData();
+                      setViewingStudent((prev) => (prev ? { ...prev, status: 'ACTIVE' } : null));
+                    }}
+                    className="py-2 px-3 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs shadow-sm flex items-center justify-center gap-1"
+                  >
+                    <UserCheck className="w-4 h-4" />
+                    <span>قبول فقط (الاشتراك معلق) ⏳</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Attendance & Exams Stats */}
             <div className="p-4 rounded-2xl bg-brand-50/50 dark:bg-brand-950/40 border border-brand-200/60 dark:border-brand-900/50 grid grid-cols-2 gap-3 text-xs text-center">

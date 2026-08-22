@@ -123,8 +123,14 @@ export async function notifyNewStudentRegistration(student: Student, group?: Gro
     inline_keyboard: [
       [
         {
-          text: '✅ قبول الطالب وتفعيل الكود',
-          callback_data: `approve:${student.id}:${student.code}`,
+          text: '✅ قبول + تفعيل الاشتراك (مدفوع)',
+          callback_data: `approve_paid:${student.id}:${student.code}`,
+        },
+      ],
+      [
+        {
+          text: '⏳ قبول فقط (الاشتراك معلق)',
+          callback_data: `approve_unpaid:${student.id}:${student.code}`,
         },
         {
           text: '❌ رفض الطلب',
@@ -133,7 +139,7 @@ export async function notifyNewStudentRegistration(student: Student, group?: Gro
       ],
       [
         {
-          text: '💬 واتساب ولي الأمر',
+          text: '💬 واتساب ولي الأمر (صورة الكارت)',
           url: `https://wa.me/${cleanParentPhone}?text=${encodeURIComponent(
             `أهلاً بحضرتك أستاذ ${student.parentName}، بخصوص طلب تسجيل الطالب (${student.name}) في أكاديمية مس نشوى للعلوم المتكاملة 🌸`
           )}`,
