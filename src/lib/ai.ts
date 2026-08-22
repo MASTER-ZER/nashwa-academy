@@ -103,8 +103,7 @@ export async function fetchStudentAIChat(params: {
     }
     throw new Error(data.error || 'Failed to get chat reply');
   } catch (err) {
-    console.warn('AI Chat fallback activated:', err);
-    return 'أهلاً بك يا بطل! أنا المساعد الذكي لمس نشوى. يبدو أن هناك ضغطاً مؤقتاً على خادم الذكاء الاصطناعي، لكن لا تقلق، اسألني مجدداً وسأكون معك لشرح أي جزء في منهج العلوم المتكاملة! 🌸🔬';
+    return 'أهلاً بك يا بطل! أنا Master AI - المساعد الذكي لمس نشوى. يبدو أن هناك ضغطاً مؤقتاً على خادم الذكاء الاصطناعي، لكن لا تقلق، اسألني مجدداً وسأكون معك لشرح أي جزء في منهج العلوم المتكاملة! 🌸🔬';
   }
 }
 

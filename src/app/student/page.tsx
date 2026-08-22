@@ -326,7 +326,7 @@ export default function StudentPortalPage() {
       // Default greeting if no history
       const initialGreeting: ChatMessage = {
         role: 'assistant',
-        content: `أهلاً بك يا ${currentStudent.name} 🌸🔬! أنا "المساعد الذكي لمس نشوى". أنا معك على مدار الساعة لمساعدتك في مراجعة منهج العلوم المتكاملة للصف الأول الثانوي، شرح أي مفهوم أو مسألة، وتوضيح خطوات الحل بالتفصيل. ماذا تحب أن نذاكر معاً الآن؟`,
+        content: `أهلاً بك يا ${currentStudent.name} 🌸🔬! أنا "Master AI" - المساعد الذكي لمس نشوى. أنا معك على مدار الساعة لمساعدتك في مراجعة منهج العلوم المتكاملة للصف الأول الثانوي، شرح أي مفهوم أو مسألة، وتوضيح خطوات الحل بالتفصيل. ماذا تحب أن نذاكر معاً الآن؟`,
       };
       setChatMessages([initialGreeting]);
       localStorage.setItem(storageKey, JSON.stringify([initialGreeting]));
@@ -787,7 +787,7 @@ export default function StudentPortalPage() {
           <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-1.5 p-1.5 rounded-2xl liquid-glass border border-slate-200/80 dark:border-slate-800 no-print">
             {[
               { id: 'CARD', label: 'كارت الهوية', icon: QrCode },
-              { id: 'AI_TUTOR', label: 'مساعد AI 🤖', icon: Bot, isSpecial: true },
+              { id: 'AI_TUTOR', label: 'Master AI 🤖⚡', icon: Bot, isSpecial: true },
               { id: 'REPORT', label: 'التقرير الشهري', icon: FileText },
               { id: 'ATTENDANCE', label: `الحضور (${attendance.length})`, icon: CalendarCheck },
               { id: 'EXAMS', label: `الدرجات (${examResults.length})`, icon: Award },
@@ -951,13 +951,13 @@ export default function StudentPortalPage() {
                   </div>
                   <div>
                     <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-                      <span>المساعد الذكي لمس نشوى</span>
+                      <span>Master AI 🤖⚡</span>
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-300">
-                        GPT-5 Mini ⚡
+                        معلم العلوم الذكي
                       </span>
                     </h2>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                      معلم العلوم المتكاملة الشخصي • متاح لمساعدتك خطوة بخطوة 24/7
+                      المساعد الذكي لمس نشوى • متاح لمساعدتك خطوة بخطوة 24/7
                     </p>
                   </div>
                 </div>
@@ -1040,7 +1040,7 @@ export default function StudentPortalPage() {
                     </div>
                     <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-xs text-slate-500 flex items-center gap-2">
                       <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-500" />
-                      <span>المساعد الذكي يكتب لك الشرح الآن... 🔬</span>
+                      <span>Master AI يكتب لك الشرح الآن... 🔬</span>
                     </div>
                   </div>
                 )}

@@ -160,7 +160,7 @@ export async function POST(req: NextRequest) {
     if (action === 'CHAT_TUTOR') {
       const { messages, studentName } = params;
 
-      const systemPrompt = `أنت "المساعد الذكي لمس نشوى" - المعلم الرقمي المساعد لطلاب مادة "العلوم المتكاملة" للصف الأول الثانوي في مصر.
+      const systemPrompt = `أنت "Master AI" (ماستر AI) - المعلم الرقمي والمساعد الذكي لمس نشوى لطلاب مادة "العلوم المتكاملة" للصف الأول الثانوي في مصر.
 الطالب الذي يتحدث معك اسمه: ${studentName || 'البطل'}.
 
 سماتك وأسلوبك:
