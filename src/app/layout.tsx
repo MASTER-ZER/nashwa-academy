@@ -9,6 +9,23 @@ export const metadata: Metadata = {
   title: "أكاديمية مس نشوى | العلوم المتكاملة - أولى ثانوي",
   description: "المنصة الرقمية الأولى المعتمدة لمادة العلوم المتكاملة للصف الأول الثانوي لمس نشوى",
   manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/logo.png", sizes: "any" },
+      { url: "/icon.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      { url: "/logo.png", sizes: "180x180", type: "image/png" },
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+    shortcut: "/logo.png",
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "أكاديمية مس نشوى",
+  },
 };
 
 export const viewport: Viewport = {
@@ -26,6 +43,12 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl">
       <head>
+        <link rel="icon" href="/logo.png" type="image/png" />
+        <link rel="shortcut icon" href="/logo.png" type="image/png" />
+        <link rel="apple-touch-icon" href="/logo.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/logo.png" />
+        <meta name="apple-mobile-web-app-title" content="أكاديمية مس نشوى" />
+        <meta name="application-name" content="أكاديمية مس نشوى" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet" />

@@ -77,8 +77,9 @@ export default function PWAInstallBanner() {
       <div className="fixed bottom-20 sm:bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-50 animate-bounce-short">
         <div className="bg-gradient-to-r from-slate-900 to-brand-950 text-white border border-brand-500/30 p-4 rounded-3xl shadow-2xl flex items-center justify-between gap-3 backdrop-blur-md">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-brand-600 to-cyan-400 text-white flex items-center justify-center font-bold shrink-0 shadow-md shadow-brand-500/30">
-              <Smartphone className="w-5 h-5" />
+            <div className="w-12 h-12 rounded-2xl overflow-hidden shadow-md shadow-cyan-500/30 border border-white/20 shrink-0">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo.png" alt="أكاديمية مس نشوى" className="w-full h-full object-cover" />
             </div>
             <div className="space-y-0.5">
               <p className="text-xs font-black text-white">تثبيت تطبيق مس نشوى 📲</p>
@@ -108,8 +109,9 @@ export default function PWAInstallBanner() {
       {showIOSGuide && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-end sm:items-center justify-center p-4">
           <div className="bg-white text-slate-900 rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center mx-auto">
-              <Smartphone className="w-7 h-7" />
+            <div className="w-14 h-14 rounded-2xl overflow-hidden shadow-md border border-slate-200 mx-auto">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo.png" alt="أكاديمية مس نشوى" className="w-full h-full object-cover" />
             </div>
             <h3 className="text-base font-black">تثبيت التطبيق على الآيفون 🍏</h3>
             <div className="text-xs text-slate-600 space-y-2 text-right bg-slate-50 p-4 rounded-2xl border border-slate-200">
