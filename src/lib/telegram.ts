@@ -1,4 +1,4 @@
-import { Student, Group } from '@/types';
+import { Student, Group, ProfileEditRequest } from '@/types';
 import { db } from './storage';
 
 function escapeHtml(text: string): string {
@@ -28,7 +28,10 @@ function getTelegramCredentials() {
   return { botToken, chatId };
 }
 
-export async function sendTelegramMessage(text: string, replyMarkup?: any): Promise<boolean> {
+export async function sendTelegramMessage(
+  text: string,
+  replyMarkup?: any
+): Promise<{ ok: boolean; messageId?: number }> {
   const { botToken, chatId } = getTelegramCredentials();
 
   try {
@@ -44,14 +47,18 @@ export async function sendTelegramMessage(text: string, replyMarkup?: any): Prom
       }),
     });
     const result = await res.json();
-    return result.ok;
+    return { ok: !!result.ok, messageId: result.result?.message_id };
   } catch (error) {
     console.error('Telegram notification error:', error);
-    return false;
+    return { ok: false };
   }
 }
 
-export async function sendTelegramPhoto(photoBase64: string, caption: string, replyMarkup?: any): Promise<boolean> {
+export async function sendTelegramPhoto(
+  photoBase64: string,
+  caption: string,
+  replyMarkup?: any
+): Promise<{ ok: boolean; messageId?: number }> {
   const { botToken, chatId } = getTelegramCredentials();
 
   try {
@@ -81,7 +88,7 @@ export async function sendTelegramPhoto(photoBase64: string, caption: string, re
         body: formData,
       });
       const result = await res.json();
-      if (result.ok) return true;
+      if (result.ok) return { ok: true, messageId: result.result?.message_id };
     }
   } catch (err) {
     console.warn('sendPhoto failed, falling back to message:', err);
@@ -89,6 +96,100 @@ export async function sendTelegramPhoto(photoBase64: string, caption: string, re
 
   // Fallback to regular text message
   return sendTelegramMessage(caption, replyMarkup);
+}
+
+export async function editTelegramMessageText(
+  messageId: number,
+  text: string,
+  replyMarkup?: any
+): Promise<boolean> {
+  const { botToken, chatId } = getTelegramCredentials();
+  try {
+    const url = `https://api.telegram.org/bot${botToken}/editMessageText`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: messageId,
+        text,
+        parse_mode: 'HTML',
+        reply_markup: replyMarkup || { inline_keyboard: [] },
+      }),
+    });
+    const result = await res.json();
+    return !!result.ok;
+  } catch (error) {
+    console.error('editMessageText failed:', error);
+    return false;
+  }
+}
+
+export async function editTelegramMessageCaption(
+  messageId: number,
+  caption: string,
+  replyMarkup?: any
+): Promise<boolean> {
+  const { botToken, chatId } = getTelegramCredentials();
+  try {
+    const url = `https://api.telegram.org/bot${botToken}/editMessageCaption`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: messageId,
+        caption,
+        parse_mode: 'HTML',
+        reply_markup: replyMarkup || { inline_keyboard: [] },
+      }),
+    });
+    const result = await res.json();
+    return !!result.ok;
+  } catch (error) {
+    console.error('editMessageCaption failed:', error);
+    return false;
+  }
+}
+
+export async function notifyDashboardActionToTelegram(params: {
+  action: 'APPROVE_STUDENT_PAID' | 'APPROVE_STUDENT_UNPAID' | 'REJECT_STUDENT' | 'APPROVE_EDIT' | 'REJECT_EDIT';
+  studentName?: string;
+  studentCode?: string;
+  telegramMessageId?: number;
+  details?: string;
+}) {
+  const { action, studentName, studentCode, telegramMessageId, details } = params;
+  const timeStr = new Date().toLocaleTimeString('ar-EG');
+  const safeName = escapeHtml(studentName || '');
+  const safeCode = escapeHtml(studentCode || '');
+
+  let updateNote = '';
+
+  if (action === 'APPROVE_STUDENT_PAID') {
+    updateNote = `✅ <b>تم قبول واعتماد تسجيل الطالب (#${safeCode} - ${safeName}) مع تفعيل اشتراك الشهر (مدفوع) بواسطة مس نشوى من لوحة التحكم 💻</b> (${timeStr})`;
+  } else if (action === 'APPROVE_STUDENT_UNPAID') {
+    updateNote = `✅ <b>تم قبول واعتماد تسجيل الطالب (#${safeCode} - ${safeName}) [الاشتراك معلق لحين الحضور] بواسطة مس نشوى من لوحة التحكم 💻</b> (${timeStr})`;
+  } else if (action === 'REJECT_STUDENT') {
+    updateNote = `❌ <b>تم رفض وحذف طلب تسجيل الطالب (#${safeCode} - ${safeName}) بواسطة مس نشوى من لوحة التحكم 💻</b> (${timeStr})`;
+  } else if (action === 'APPROVE_EDIT') {
+    updateNote = `✅ <b>تم قبول واعتماد طلب تعديل بيانات الطالب (#${safeCode} - ${safeName}) وتحديث الكارت والملف فوراً بواسطة مس نشوى من لوحة التحكم 💻🌸</b> (${timeStr})`;
+  } else if (action === 'REJECT_EDIT') {
+    updateNote = `❌ <b>تم رفض طلب تعديل بيانات الطالب (#${safeCode} - ${safeName}) بواسطة مس نشوى من لوحة التحكم 💻</b> (${timeStr})`;
+  }
+
+  // 1. If we have the original Telegram message ID, edit it directly so buttons vanish and status appears
+  if (telegramMessageId) {
+    const editPayload = `${updateNote}${details ? `\n\n${details}` : ''}`;
+    const textUpdated = await editTelegramMessageText(telegramMessageId, editPayload);
+    if (!textUpdated) {
+      // Might be a photo message, so edit caption
+      await editTelegramMessageCaption(telegramMessageId, editPayload);
+    }
+  }
+
+  // 2. Also send a brief real-time status message to the Telegram admin chat so Miss Nashwa sees the live event
+  await sendTelegramMessage(updateNote);
 }
 
 export async function notifyNewStudentRegistration(student: Student, group?: Group | null) {
@@ -221,23 +322,61 @@ export async function notifyProfileEditRequest(
     photoUrl?: string;
     groupId: string;
   },
-  groupName?: string
+  groupName?: string,
+  originalGroupName?: string
 ) {
   const cleanParentPhone = proposed.parentPhone.replace(/\D/g, '').replace(/^0/, '20');
 
+  // Compute exact list of changed fields
+  const changedList: string[] = [];
+
+  if (proposed.name && proposed.name.trim() !== student.name.trim()) {
+    changedList.push(`• 👤 <b>اسم الطالب:</b> تم تعديله من <i>"${escapeHtml(student.name)}"</i> ⬅️ إلى <b>"${escapeHtml(proposed.name)}"</b>`);
+  }
+  if (proposed.phone && proposed.phone.trim() !== student.phone.trim()) {
+    changedList.push(`• 📞 <b>هاتف الطالب:</b> تم تعديله من <code>${escapeHtml(student.phone)}</code> ⬅️ إلى <code>${escapeHtml(proposed.phone)}</code>`);
+  }
+  if (proposed.parentName && proposed.parentName.trim() !== student.parentName.trim()) {
+    changedList.push(`• 👨‍👦 <b>اسم ولي الأمر:</b> تم تعديله من <i>"${escapeHtml(student.parentName)}"</i> ⬅️ إلى <b>"${escapeHtml(proposed.parentName)}"</b>`);
+  }
+  if (proposed.parentPhone && proposed.parentPhone.trim() !== student.parentPhone.trim()) {
+    changedList.push(`• 📱 <b>هاتف ولي الأمر:</b> تم تعديله من <code>${escapeHtml(student.parentPhone)}</code> ⬅️ إلى <code>${escapeHtml(proposed.parentPhone)}</code>`);
+  }
+  if (proposed.groupId && proposed.groupId !== student.groupId) {
+    changedList.push(`• ⏰ <b>المجموعة:</b> تم تغييرها من <i>"${escapeHtml(originalGroupName || 'المجموعة الحالية')}"</i> ⬅️ إلى <b>"${escapeHtml(groupName || 'المجموعة الجديدة')}"</b>`);
+  }
+  if (proposed.address && proposed.address.trim() !== (student.address || '').trim()) {
+    changedList.push(`• 📍 <b>العنوان:</b> تم تعديله من <i>"${escapeHtml(student.address || 'غير مسجل')}"</i> ⬅️ إلى <b>"${escapeHtml(proposed.address)}"</b>`);
+  }
+  if (proposed.birthDate && proposed.birthDate.trim() !== (student.birthDate || '').trim()) {
+    changedList.push(`• 🎂 <b>تاريخ الميلاد:</b> من <code>${escapeHtml(student.birthDate || 'غير مسجل')}</code> ⬅️ إلى <code>${escapeHtml(proposed.birthDate)}</code>`);
+  }
+  if (proposed.photoUrl && proposed.photoUrl !== student.photoUrl) {
+    changedList.push(`• 📸 <b>الصورة الشخصية:</b> قام الطالب برفع صورة شخصية جديدة لحسابه`);
+  }
+
+  if (changedList.length === 0) {
+    changedList.push(`• 📝 تم إرسال طلب تأكيد البيانات الحالية.`);
+  }
+
   const messageText = `
-✏️ <b>طلب تعديل بيانات طالب (#${escapeHtml(student.code)}) بحاجة لموافقتك</b> 🌸
+✏️ <b>طلب تعديل بيانات طالب (#${escapeHtml(student.code)})</b> 🌸
 
-👤 <b>اسم الطالب:</b> ${escapeHtml(proposed.name)} ${proposed.name !== student.name ? `<i>(سابقاً: ${escapeHtml(student.name)})</i>` : ''}
-🔢 <b>كود الطالب:</b> <code>#${escapeHtml(student.code)}</code>
-📞 <b>هاتف الطالب:</b> <code>${escapeHtml(proposed.phone)}</code> ${proposed.phone !== student.phone ? `<i>(سابقاً: ${escapeHtml(student.phone)})</i>` : ''}
-👨‍👦 <b>ولي الأمر:</b> ${escapeHtml(proposed.parentName)} (<code>${escapeHtml(proposed.parentPhone)}</code>) ${proposed.parentPhone !== student.parentPhone ? `<i>(سابقاً: ${escapeHtml(student.parentPhone)})</i>` : ''}
-🎂 <b>تاريخ الميلاد:</b> <code>${escapeHtml(proposed.birthDate || 'غير مسجل')}</code>
-📍 <b>العنوان:</b> ${escapeHtml(proposed.address || 'غير مسجل')}
-⏰ <b>المجموعة:</b> ${escapeHtml(groupName || 'غير محدد')}
-🕒 <b>وقت تقديم الطلب:</b> ${new Date().toLocaleDateString('ar-EG')} - ${new Date().toLocaleTimeString('ar-EG')}
+📋 <b>التعديلات المطلوبة تحديداً (${changedList.length}):</b>
+${changedList.join('\n')}
 
-⚠️ <i>لن يتم تطبيق التعديلات على حساب الطالب إلا بعد موافقتك.</i>
+━━━━━━━━━━━━━━━━━
+👤 <b>البيانات الكاملة بعد التعديل المقترح:</b>
+• <b>اسم الطالب:</b> ${escapeHtml(proposed.name)}
+• <b>كود الطالب:</b> <code>#${escapeHtml(student.code)}</code>
+• <b>هاتف الطالب:</b> <code>${escapeHtml(proposed.phone)}</code>
+• <b>ولي الأمر:</b> ${escapeHtml(proposed.parentName)} (<code>${escapeHtml(proposed.parentPhone)}</code>)
+• <b>المجموعة:</b> ${escapeHtml(groupName || 'غير محدد')}
+• <b>العنوان:</b> ${escapeHtml(proposed.address || 'غير مسجل')}
+• <b>تاريخ الميلاد:</b> <code>${escapeHtml(proposed.birthDate || 'غير مسجل')}</code>
+• <b>وقت تقديم الطلب:</b> ${new Date().toLocaleDateString('ar-EG')} - ${new Date().toLocaleTimeString('ar-EG')}
+
+⚠️ <i>لن يتم تطبيق أي تعديل على كارت وحساب الطالب إلا بعد موافقتكِ.</i>
 `;
 
   const inlineKeyboard = {
@@ -260,7 +399,7 @@ export async function notifyProfileEditRequest(
         {
           text: '💬 واتساب ولي الأمر',
           url: `https://wa.me/${cleanParentPhone}?text=${encodeURIComponent(
-            `أهلاً بحضرتك أستاذ ${proposed.parentName}، نرحب بحضرتكم من أكاديمية مس نشوى 🌸`
+            `أهلاً بحضرتك أستاذ ${proposed.parentName}، بخصوص طلب تعديل بيانات الطالب (${proposed.name}) في أكاديمية مس نشوى 🌸`
           )}`,
         },
       ],
@@ -273,4 +412,5 @@ export async function notifyProfileEditRequest(
 
   return sendTelegramMessage(messageText, inlineKeyboard);
 }
+
 

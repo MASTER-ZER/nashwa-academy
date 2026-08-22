@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { db, getCurrentMonthLabel } from '@/lib/storage';
-import { Student, Group, SystemData } from '@/types';
+import { Student, Group, SystemData, ProfileEditRequest } from '@/types';
 import {
   Users,
   Search,
@@ -41,6 +41,7 @@ import DateWheelPicker from '@/components/DateWheelPicker';
 import { compressStudentPhoto } from '@/lib/imageCompressor';
 import { generateStudentReportCardCanvas } from '@/lib/generateReportCard';
 import { fetchAIRecommendation } from '@/lib/ai';
+import { notifyDashboardActionToTelegram } from '@/lib/telegram';
 
 export default function StudentsDirectoryPage() {
   const [data, setData] = useState<SystemData | null>(null);
@@ -313,10 +314,52 @@ export default function StudentsDirectoryPage() {
     loadData();
   };
 
+  const handleApproveStudent = (std: Student, markPaid: boolean) => {
+    db.approveStudent(std.id, markPaid);
+    notifyDashboardActionToTelegram({
+      action: markPaid ? 'APPROVE_STUDENT_PAID' : 'APPROVE_STUDENT_UNPAID',
+      studentName: std.name,
+      studentCode: std.code,
+      telegramMessageId: std.telegramMessageId,
+    }).catch(() => {});
+    loadData();
+  };
+
   const handleDelete = (id: string, name: string) => {
+    const std = data?.students.find((s) => s.id === id);
     if (confirm(`هل أنت متأكد من حذف الطالب (${name}) نهائياً؟`)) {
       db.rejectStudent(id);
+      notifyDashboardActionToTelegram({
+        action: 'REJECT_STUDENT',
+        studentName: name,
+        studentCode: std?.code,
+        telegramMessageId: std?.telegramMessageId,
+      }).catch(() => {});
       if (viewingStudent?.id === id) setViewingStudent(null);
+      loadData();
+    }
+  };
+
+  const handleApproveEditRequest = (req: ProfileEditRequest) => {
+    db.approveProfileEditRequest(req.id);
+    notifyDashboardActionToTelegram({
+      action: 'APPROVE_EDIT',
+      studentName: req.proposedData.name,
+      studentCode: req.studentCode,
+      telegramMessageId: req.telegramMessageId,
+    }).catch(() => {});
+    loadData();
+  };
+
+  const handleRejectEditRequest = (req: ProfileEditRequest) => {
+    if (confirm('هل أنتِ متأكدة من رفض هذا التعديل؟')) {
+      db.rejectProfileEditRequest(req.id);
+      notifyDashboardActionToTelegram({
+        action: 'REJECT_EDIT',
+        studentName: req.proposedData.name,
+        studentCode: req.studentCode,
+        telegramMessageId: req.telegramMessageId,
+      }).catch(() => {});
       loadData();
     }
   };
@@ -494,20 +537,14 @@ export default function StudentsDirectoryPage() {
                         {std.status === 'PENDING' && (
                           <>
                             <button
-                              onClick={() => {
-                                db.approveStudent(std.id, true);
-                                loadData();
-                              }}
+                              onClick={() => handleApproveStudent(std, true)}
                               className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black transition shadow-xs"
                               title="قبول واعتماد الطالب مع تفعيل اشتراك الشهر (مدفوع) ✅"
                             >
                               قبول+دفع ✅
                             </button>
                             <button
-                              onClick={() => {
-                                db.approveStudent(std.id, false);
-                                loadData();
-                              }}
+                              onClick={() => handleApproveStudent(std, false)}
                               className="p-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white text-[10px] font-black transition shadow-xs"
                               title="قبول الحساب فقط (الاشتراك معلق) ⏳"
                             >
@@ -859,8 +896,7 @@ export default function StudentsDirectoryPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      db.approveStudent(viewingStudent.id, true);
-                      loadData();
+                      handleApproveStudent(viewingStudent, true);
                       setViewingStudent((prev) => (prev ? { ...prev, status: 'ACTIVE' } : null));
                     }}
                     className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-sm flex items-center justify-center gap-1"
@@ -872,8 +908,7 @@ export default function StudentsDirectoryPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      db.approveStudent(viewingStudent.id, false);
-                      loadData();
+                      handleApproveStudent(viewingStudent, false);
                       setViewingStudent((prev) => (prev ? { ...prev, status: 'ACTIVE' } : null));
                     }}
                     className="py-2 px-3 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs shadow-sm flex items-center justify-center gap-1"
@@ -1542,6 +1577,31 @@ export default function StudentsDirectoryPage() {
                         </span>
                       </div>
 
+                      {/* Changed Fields Highlights */}
+                      {(() => {
+                        const pills: { label: string; icon: string }[] = [];
+                        if (req.proposedData.name.trim() !== (student?.name || '').trim()) pills.push({ label: 'اسم الطالب', icon: '👤' });
+                        if (req.proposedData.phone.trim() !== (student?.phone || '').trim()) pills.push({ label: 'هاتف الطالب', icon: '📞' });
+                        if (req.proposedData.parentName.trim() !== (student?.parentName || '').trim()) pills.push({ label: 'اسم ولي الأمر', icon: '👨‍👦' });
+                        if (req.proposedData.parentPhone.trim() !== (student?.parentPhone || '').trim()) pills.push({ label: 'هاتف ولي الأمر', icon: '📱' });
+                        if (req.proposedData.groupId !== student?.groupId) pills.push({ label: 'المجموعة', icon: '⏰' });
+                        if (req.proposedData.address.trim() !== (student?.address || '').trim()) pills.push({ label: 'العنوان', icon: '📍' });
+                        if (req.proposedData.birthDate.trim() !== (student?.birthDate || '').trim()) pills.push({ label: 'تاريخ الميلاد', icon: '🎂' });
+                        if (req.proposedData.photoUrl && req.proposedData.photoUrl !== student?.photoUrl) pills.push({ label: 'صورة شخصية جديدة', icon: '📸' });
+
+                        return (
+                          <div className="flex flex-wrap items-center gap-1.5 p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700">
+                            <span className="text-[10px] font-black text-amber-900 dark:text-amber-200">🔍 التعديلات المطلوبة ({pills.length}):</span>
+                            {pills.map((pill, idx) => (
+                              <span key={idx} className="px-2 py-0.5 rounded-lg bg-amber-500 text-white font-bold text-[10px] shadow-2xs flex items-center gap-1">
+                                <span>{pill.icon}</span>
+                                <span>{pill.label}</span>
+                              </span>
+                            ))}
+                          </div>
+                        );
+                      })()}
+
                       {/* Side by side comparison */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
                         <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
@@ -1553,17 +1613,31 @@ export default function StudentsDirectoryPage() {
                           <p><strong>ولي الأمر:</strong> {student?.parentName || '—'} (<span dir="ltr" className="font-mono">{student?.parentPhone || '—'}</span>)</p>
                           <p><strong>المجموعة:</strong> {originalGrp?.name || '—'}</p>
                           <p><strong>العنوان:</strong> {student?.address || '—'}</p>
+                          <p><strong>تاريخ الميلاد:</strong> {student?.birthDate || '—'}</p>
                         </div>
 
                         <div className="p-2.5 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-300/40 dark:border-emerald-800/60 space-y-1 text-emerald-900 dark:text-emerald-200">
                           <p className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 border-b border-emerald-200/60 dark:border-emerald-900/60 pb-1">
                             التعديل المقترح المطلوب:
                           </p>
-                          <p><strong>الاسم:</strong> {req.proposedData.name}</p>
-                          <p><strong>هاتف الطالب:</strong> <span dir="ltr" className="font-mono font-bold">{req.proposedData.phone}</span></p>
-                          <p><strong>ولي الأمر:</strong> {req.proposedData.parentName} (<span dir="ltr" className="font-mono font-bold">{req.proposedData.parentPhone}</span>)</p>
-                          <p><strong>المجموعة:</strong> {proposedGrp?.name || '—'}</p>
-                          <p><strong>العنوان:</strong> {req.proposedData.address || '—'}</p>
+                          <p className={req.proposedData.name !== student?.name ? 'font-black text-amber-700 dark:text-amber-300' : ''}>
+                            <strong>الاسم:</strong> {req.proposedData.name} {req.proposedData.name !== student?.name && '✨'}
+                          </p>
+                          <p className={req.proposedData.phone !== student?.phone ? 'font-black text-amber-700 dark:text-amber-300' : ''}>
+                            <strong>هاتف الطالب:</strong> <span dir="ltr" className="font-mono font-bold">{req.proposedData.phone}</span> {req.proposedData.phone !== student?.phone && '✨'}
+                          </p>
+                          <p className={req.proposedData.parentPhone !== student?.parentPhone || req.proposedData.parentName !== student?.parentName ? 'font-black text-amber-700 dark:text-amber-300' : ''}>
+                            <strong>ولي الأمر:</strong> {req.proposedData.parentName} (<span dir="ltr" className="font-mono font-bold">{req.proposedData.parentPhone}</span>)
+                          </p>
+                          <p className={req.proposedData.groupId !== student?.groupId ? 'font-black text-amber-700 dark:text-amber-300' : ''}>
+                            <strong>المجموعة:</strong> {proposedGrp?.name || '—'} {req.proposedData.groupId !== student?.groupId && '✨'}
+                          </p>
+                          <p className={req.proposedData.address !== student?.address ? 'font-black text-amber-700 dark:text-amber-300' : ''}>
+                            <strong>العنوان:</strong> {req.proposedData.address || '—'} {req.proposedData.address !== student?.address && '✨'}
+                          </p>
+                          <p className={req.proposedData.birthDate !== student?.birthDate ? 'font-black text-amber-700 dark:text-amber-300' : ''}>
+                            <strong>تاريخ الميلاد:</strong> {req.proposedData.birthDate || '—'} {req.proposedData.birthDate !== student?.birthDate && '✨'}
+                          </p>
                         </div>
                       </div>
 
@@ -1586,10 +1660,7 @@ export default function StudentsDirectoryPage() {
                       <div className="pt-1 flex flex-wrap gap-2">
                         <button
                           type="button"
-                          onClick={() => {
-                            db.approveProfileEditRequest(req.id);
-                            loadData();
-                          }}
+                          onClick={() => handleApproveEditRequest(req)}
                           className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition flex items-center justify-center gap-1 shadow-sm"
                         >
                           <CheckCheck className="w-4 h-4" />
@@ -1598,12 +1669,7 @@ export default function StudentsDirectoryPage() {
 
                         <button
                           type="button"
-                          onClick={() => {
-                            if (confirm('هل أنتِ متأكدة من رفض هذا التعديل؟')) {
-                              db.rejectProfileEditRequest(req.id);
-                              loadData();
-                            }
-                          }}
+                          onClick={() => handleRejectEditRequest(req)}
                           className="py-2 px-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 dark:text-rose-400 font-bold text-xs border border-rose-200 dark:border-rose-900 transition flex items-center gap-1"
                         >
                           <X className="w-4 h-4" />

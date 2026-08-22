@@ -1103,6 +1103,16 @@ class StorageService {
     return (data.profileEditRequests || []).find((r) => r.studentId === studentId && r.status === 'PENDING') || null;
   }
 
+  public updateProfileEditRequestMessageId(requestId: string, messageId: number): void {
+    const data = this.getData();
+    if (!data.profileEditRequests) return;
+    const req = data.profileEditRequests.find((r) => r.id === requestId);
+    if (req) {
+      req.telegramMessageId = messageId;
+      this.saveData(data);
+    }
+  }
+
   public markExamNotificationSent(resultId: string, type: 'student' | 'parent'): void {
     const data = this.getData();
     const index = data.examResults.findIndex((r) => r.id === resultId);

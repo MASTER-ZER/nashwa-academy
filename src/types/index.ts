@@ -25,6 +25,7 @@ export interface Student {
   groupId: string;
   status: StudentStatus;
   registeredAt: string;
+  telegramMessageId?: number;
   notes?: string;
 }
 
@@ -105,6 +106,7 @@ export interface ProfileEditRequest {
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   requestedAt: string;
   reviewedAt?: string;
+  telegramMessageId?: number;
   notes?: string;
 }
 

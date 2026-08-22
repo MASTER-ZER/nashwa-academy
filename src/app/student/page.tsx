@@ -458,9 +458,14 @@ export default function StudentPortalPage() {
 
       setPendingEditReq(newReq);
 
-      // 2. Notify Miss Nashwa on Telegram with Inline Approve/Reject Buttons
+      // 2. Notify Miss Nashwa on Telegram with Detailed Diff & Inline Approve/Reject Buttons
       const selectedGrp = groups.find((g) => g.id === proposedData.groupId) || group;
-      notifyProfileEditRequest(newReq.id, currentStudent, proposedData, selectedGrp?.name);
+      const originalGrp = groups.find((g) => g.id === currentStudent.groupId);
+      notifyProfileEditRequest(newReq.id, currentStudent, proposedData, selectedGrp?.name, originalGrp?.name).then((res) => {
+        if (res && res.messageId) {
+          db.updateProfileEditRequestMessageId(newReq.id, res.messageId);
+        }
+      }).catch(() => {});
 
       setEditSuccessMsg('تم إرسال طلب تعديل البيانات بنجاح! 🌸 سيتم مراجعة وتطبيق التعديل فور اعتماد مس نشوى له.');
 

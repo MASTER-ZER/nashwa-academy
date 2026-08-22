@@ -151,7 +151,11 @@ export default function RegisterPage() {
       });
 
       const selectedGroup = groups.find((g) => g.id === formData.groupId);
-      notifyNewStudentRegistration(student, selectedGroup).catch(() => {});
+      notifyNewStudentRegistration(student, selectedGroup).then((res) => {
+        if (res && res.messageId) {
+          db.updateStudent(student.id, { telegramMessageId: res.messageId });
+        }
+      }).catch(() => {});
 
       // Save student code to localStorage for permanent session
       localStorage.setItem('logged_student_code', student.code);
