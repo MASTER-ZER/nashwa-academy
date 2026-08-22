@@ -25,6 +25,7 @@ export async function generateStudentReportCardCanvas(params: {
   isPaid: boolean;
   monthName: string;
   teacherName?: string;
+  customNote?: string;
 }): Promise<string> {
   const {
     student,
@@ -35,6 +36,7 @@ export async function generateStudentReportCardCanvas(params: {
     isPaid,
     monthName,
     teacherName = 'مس نشوى',
+    customNote,
   } = params;
 
   if (typeof document !== 'undefined' && document.fonts && typeof document.fonts.ready !== 'undefined') {
@@ -392,12 +394,32 @@ export async function generateStudentReportCardCanvas(params: {
   ctx.fillText('💬 كلمة وتوجيه المعلمة لولي الأمر:', width - 90, footerY + 45);
 
   ctx.fillStyle = '#cbd5e1';
-  ctx.font = '15px Cairo, sans-serif';
-  const customComment =
+  ctx.font = '14px Cairo, sans-serif';
+  const customComment = customNote?.trim() || (
     avgPercent >= 85
       ? `نبارك لولي الأمر على تفوق الطالب (${student.name}) والتزامه المتميز في الحصص والامتحانات، ونتمنى له دوام النجاح.`
-      : `نرجو من ولي أمر الطالب (${student.name}) متابعة مراجعة دروس العلوم المتكاملة وحل الواجبات لرفع المستوى في الاختبار القادم.`;
-  ctx.fillText(customComment, width - 90, footerY + 80);
+      : `نرجو من ولي أمر الطالب (${student.name}) متابعة مراجعة دروس العلوم المتكاملة وحل الواجبات لرفع المستوى في الاختبار القادم.`
+  );
+
+  // Wrap note text into 2 lines if longer than 65 characters
+  if (customComment.length > 70) {
+    const words = customComment.split(' ');
+    let line1 = '';
+    let line2 = '';
+    for (const w of words) {
+      if ((line1 + ' ' + w).length <= 65) {
+        line1 += (line1 ? ' ' : '') + w;
+      } else {
+        line2 += (line2 ? ' ' : '') + w;
+      }
+    }
+    ctx.fillText(line1, width - 90, footerY + 75);
+    if (line2) {
+      ctx.fillText(line2, width - 90, footerY + 100);
+    }
+  } else {
+    ctx.fillText(customComment, width - 90, footerY + 80);
+  }
 
   // Signatures & Official Stamp
   const signY = footerY + 140;

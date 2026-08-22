@@ -25,9 +25,15 @@ import {
   Copy,
   Flame,
   Star,
-  Users
+  Users,
+  BrainCircuit,
+  Wand2,
+  Loader2,
+  BookOpen,
+  HelpCircle
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { fetchAIQuiz, GeneratedQuizResult } from '@/lib/ai';
 
 export default function ExamsDashboardPage() {
   const [data, setData] = useState<SystemData | null>(null);
@@ -41,6 +47,15 @@ export default function ExamsDashboardPage() {
   const [newExamTitle, setNewExamTitle] = useState('');
   const [newExamScore, setNewExamScore] = useState<number>(20);
   const [newExamDate, setNewExamDate] = useState<string>(new Date().toISOString().split('T')[0]);
+
+  // AI Quiz Generator States
+  const [isAIQuizModalOpen, setIsAIQuizModalOpen] = useState(false);
+  const [aiQuizTopic, setAiQuizTopic] = useState('الكيمياء الحيوية وعمليات الطاقة في الخلية');
+  const [aiQuizCount, setAiQuizCount] = useState<number>(5);
+  const [aiQuizDifficulty, setAiQuizDifficulty] = useState<'EASY' | 'MEDIUM' | 'HARD' | 'CHALLENGE'>('MEDIUM');
+  const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
+  const [generatedQuiz, setGeneratedQuiz] = useState<GeneratedQuizResult | null>(null);
+  const [aiQuizError, setAiQuizError] = useState('');
 
   // Scores input state
   const [scoresState, setScoresState] = useState<Record<string, { score: number; feedback: string }>>({});
@@ -181,6 +196,45 @@ export default function ExamsDashboardPage() {
     loadData();
   };
 
+  const handleGenerateAIQuiz = async () => {
+    if (!aiQuizTopic.trim()) return;
+    setIsGeneratingQuiz(true);
+    setAiQuizError('');
+    try {
+      const quiz = await fetchAIQuiz({
+        topic: aiQuizTopic.trim(),
+        questionCount: Number(aiQuizCount) || 5,
+        difficulty: aiQuizDifficulty,
+      });
+      setGeneratedQuiz(quiz);
+      sound.playSuccessChime();
+    } catch (err: any) {
+      setAiQuizError('حدث خطأ أثناء توليد الاختبار. يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsGeneratingQuiz(false);
+    }
+  };
+
+  const handleAdoptAIQuiz = () => {
+    if (!generatedQuiz) return;
+    const exam = db.addExam({
+      title: generatedQuiz.title,
+      totalScore: generatedQuiz.maxScore,
+      maxScore: generatedQuiz.maxScore,
+      date: new Date().toISOString().split('T')[0],
+      academicYear: 'FIRST_SEC',
+    });
+
+    setSelectedExamId(exam.id);
+    setIsAIQuizModalOpen(false);
+    setGeneratedQuiz(null);
+    loadData();
+    sound.playSuccessChime();
+    try {
+      confetti({ particleCount: 60, spread: 70 });
+    } catch {}
+  };
+
   const handleOpenParentWhatsApp = (student: Student, score: number) => {
     if (!selectedExam) return;
     const url = generateParentExamWhatsAppUrl({
@@ -318,13 +372,23 @@ export default function ExamsDashboardPage() {
             ))}
           </div>
 
-          <button
-            onClick={() => setIsAddExamOpen(true)}
-            className="px-3.5 py-2 rounded-2xl bg-brand-50 dark:bg-brand-950/60 text-brand-700 dark:text-cyan-300 border border-brand-200 dark:border-cyan-500/30 font-bold text-xs hover:bg-brand-100 transition flex items-center gap-1 shrink-0 self-start sm:self-center"
-          >
-            <Plus className="w-4 h-4" />
-            <span>امتحان جديد</span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0 self-start sm:self-center">
+            <button
+              onClick={() => setIsAIQuizModalOpen(true)}
+              className="px-3.5 py-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs transition flex items-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95"
+            >
+              <BrainCircuit className="w-4 h-4 text-amber-300" />
+              <span>توليد امتحان بالـ AI ✨</span>
+            </button>
+
+            <button
+              onClick={() => setIsAddExamOpen(true)}
+              className="px-3.5 py-2 rounded-2xl bg-brand-50 dark:bg-brand-950/60 text-brand-700 dark:text-cyan-300 border border-brand-200 dark:border-cyan-500/30 font-bold text-xs hover:bg-brand-100 transition flex items-center gap-1"
+            >
+              <Plus className="w-4 h-4" />
+              <span>امتحان جديد</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -553,6 +617,196 @@ export default function ExamsDashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* AI Science Quiz Generator Modal */}
+      {isAIQuizModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-emerald-500/30 rounded-3xl p-5 sm:p-6 max-w-2xl w-full shadow-2xl space-y-4 my-6 text-right">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <BrainCircuit className="w-5 h-5 text-emerald-500" />
+                  <span>مولد الامتحانات الذكي (GPT-4o AI)</span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  توليد بنك أسئلة واختبارات اختيار من متعدد لمنهج العلوم المتكاملة
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAIQuizModalOpen(false);
+                  setGeneratedQuiz(null);
+                }}
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Topic Pills */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                الموضوع أو الدرس المطلوب:
+              </label>
+              <input
+                type="text"
+                value={aiQuizTopic}
+                onChange={(e) => setAiQuizTopic(e.target.value)}
+                placeholder="اكتب اسم الدرس (مثال: الطاقة وتحولاتها في النظم البيئية)"
+                className="w-full px-3.5 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
+              />
+
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                <span className="text-[11px] text-slate-400 font-bold self-center">دروس سريعة:</span>
+                {[
+                  'الكيمياء الحيوية والخلية',
+                  'الطاقة والنظم البيئية',
+                  'الخواص المائية والتربة',
+                  'الغلاف الجوي والمناخ',
+                  'التنفس الخلوي والبناء الضوئي',
+                ].map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setAiQuizTopic(t)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition border ${
+                      aiQuizTopic === t
+                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                        : 'bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">عدد الأسئلة:</label>
+                <select
+                  value={aiQuizCount}
+                  onChange={(e) => setAiQuizCount(Number(e.target.value))}
+                  className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none"
+                >
+                  <option value={3}>3 أسئلة (اختبار قصير 12 درجة)</option>
+                  <option value={5}>5 أسئلة (اختبار حصة 20 درجة)</option>
+                  <option value={10}>10 أسئلة (اختبار شهري 40 درجة)</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">مستوى الصعوبة:</label>
+                <select
+                  value={aiQuizDifficulty}
+                  onChange={(e) => setAiQuizDifficulty(e.target.value as any)}
+                  className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none"
+                >
+                  <option value="EASY">مباشر وتذكر للمفاهيم</option>
+                  <option value="MEDIUM">متوسط وتطبيق عملي</option>
+                  <option value="HARD">مستويات تفكير عليا</option>
+                  <option value="CHALLENGE">تحدي للمتفوقين 🏆</option>
+                </select>
+              </div>
+            </div>
+
+            {aiQuizError && (
+              <p className="text-xs font-bold text-rose-500 bg-rose-50 dark:bg-rose-950/40 p-2.5 rounded-xl border border-rose-200 dark:border-rose-900">
+                {aiQuizError}
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={handleGenerateAIQuiz}
+              disabled={isGeneratingQuiz || !aiQuizTopic.trim()}
+              className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-lg transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isGeneratingQuiz ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>جاري صياغة وتوليد أسئلة الامتحان بالذكاء الاصطناعي... ⏳</span>
+                </>
+              ) : (
+                <>
+                  <Wand2 className="w-4 h-4 text-amber-300" />
+                  <span>توليد بنك الأسئلة الآن ✨</span>
+                </>
+              )}
+            </button>
+
+            {/* Generated Quiz Result Preview */}
+            {generatedQuiz && (
+              <div className="p-4 rounded-2xl bg-slate-950 border border-emerald-500/30 text-white space-y-4 max-h-[45vh] overflow-y-auto">
+                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                  <h4 className="text-sm font-black text-emerald-400 flex items-center gap-1.5">
+                    <BookOpen className="w-4 h-4" />
+                    <span>{generatedQuiz.title}</span>
+                  </h4>
+                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">
+                    {generatedQuiz.maxScore} درجة ({generatedQuiz.totalQuestions} أسئلة)
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {generatedQuiz.questions.map((q, idx) => (
+                    <div key={idx} className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                      <p className="text-xs font-bold text-slate-100 flex items-start gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 text-[10px]">
+                          {q.questionNumber}
+                        </span>
+                        <span>{q.questionText}</span>
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] pr-6">
+                        {q.options.map((opt, oIdx) => (
+                          <span
+                            key={oIdx}
+                            className={`px-2.5 py-1 rounded-lg ${
+                              oIdx === q.correctOptionIndex
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold'
+                                : 'bg-slate-800/60 text-slate-400'
+                            }`}
+                          >
+                            {opt}
+                          </span>
+                        ))}
+                      </div>
+
+                      {q.explanation && (
+                        <p className="text-[10px] text-amber-300/80 bg-amber-500/5 p-2 rounded-lg border border-amber-500/10 pr-6">
+                          💡 <strong>التفسير:</strong> {q.explanation}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleAdoptAIQuiz}
+                    className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition flex items-center justify-center gap-1.5 shadow-md"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>إضافة هذا الاختبار لسجل الامتحانات فوراً ✅</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center gap-1.5"
+                  >
+                    <Printer className="w-4 h-4 text-cyan-400" />
+                    <span>طباعة الأسئلة 🖨️</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

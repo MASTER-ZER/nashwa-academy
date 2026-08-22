@@ -29,11 +29,15 @@ import {
   FileText,
   Printer,
   Sparkles,
+  Wand2,
+  BrainCircuit,
+  Loader2,
 } from 'lucide-react';
 import Link from 'next/link';
 import DateWheelPicker from '@/components/DateWheelPicker';
 import { compressStudentPhoto } from '@/lib/imageCompressor';
 import { generateStudentReportCardCanvas } from '@/lib/generateReportCard';
+import { fetchAIRecommendation } from '@/lib/ai';
 
 export default function StudentsDirectoryPage() {
   const [data, setData] = useState<SystemData | null>(null);
@@ -44,6 +48,8 @@ export default function StudentsDirectoryPage() {
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [previewImageModal, setPreviewImageModal] = useState<{ url: string; name: string; code: string } | null>(null);
   const [reportCardModal, setReportCardModal] = useState<{ student: Student; dataUrl: string; monthName: string } | null>(null);
+  const [customAINote, setCustomAINote] = useState('');
+  const [isGeneratingAINote, setIsGeneratingAINote] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
@@ -152,11 +158,106 @@ export default function StudentsDirectoryPage() {
         dataUrl,
         monthName: curMonth,
       });
+      setCustomAINote('');
     } catch (err) {
       console.error('Error generating report card:', err);
       alert('حدث خطأ أثناء توليد التقرير الشهري.');
     } finally {
       setIsGeneratingReport(false);
+    }
+  };
+
+  const handleRegenerateWithNote = async (note: string) => {
+    if (!data || !reportCardModal) return;
+    const std = reportCardModal.student;
+    const curMonth = reportCardModal.monthName;
+    const grp = data.groups.find((g) => g.id === std.groupId) || null;
+    const stdAtt = data.attendance.filter((a) => a.studentId === std.id);
+    const groupSessions = data.sessions.filter((s) => s.groupId === std.groupId);
+    const totalSessions = Math.max(groupSessions.length, stdAtt.length, 4);
+
+    const stdExamResults = data.examResults
+      .filter((r) => r.studentId === std.id)
+      .map((r) => {
+        const exam = data.exams.find((e) => e.id === r.examId);
+        return exam ? { exam, result: r } : null;
+      })
+      .filter(Boolean) as { exam: any; result: any }[];
+
+    const isPaid = data.subscriptions.some((s) => s.studentId === std.id && s.month === curMonth && s.isPaid);
+
+    const dataUrl = await generateStudentReportCardCanvas({
+      student: std,
+      group: grp,
+      attendanceCount: stdAtt.length,
+      totalSessionsCount: totalSessions,
+      examResults: stdExamResults,
+      isPaid,
+      monthName: curMonth,
+      teacherName: data.settings?.teacherName || 'مس نشوى',
+      customNote: note,
+    });
+
+    setReportCardModal((prev) => (prev ? { ...prev, dataUrl } : null));
+  };
+
+  const handleGenerateAIRecommendation = async () => {
+    if (!data || !reportCardModal) return;
+    const std = reportCardModal.student;
+    const curMonth = reportCardModal.monthName;
+    const grp = data.groups.find((g) => g.id === std.groupId) || null;
+    const stdAtt = data.attendance.filter((a) => a.studentId === std.id);
+    const groupSessions = data.sessions.filter((s) => s.groupId === std.groupId);
+    const totalSessions = Math.max(groupSessions.length, stdAtt.length, 4);
+    const attRate = Math.round((stdAtt.length / totalSessions) * 100);
+
+    const stdExamResults = data.examResults
+      .filter((r) => r.studentId === std.id)
+      .map((r) => {
+        const exam = data.exams.find((e) => e.id === r.examId);
+        return exam ? { exam, result: r } : null;
+      })
+      .filter(Boolean) as { exam: any; result: any }[];
+
+    const avgScore =
+      stdExamResults.length > 0
+        ? Math.round(
+            stdExamResults.reduce((acc, curr) => acc + (curr.result.score / curr.exam.maxScore) * 100, 0) /
+              stdExamResults.length
+          )
+        : 0;
+
+    const gradeLabel =
+      avgScore >= 85 ? 'ممتاز 🏆' : avgScore >= 75 ? 'جيد جداً 🌟' : avgScore >= 65 ? 'جيد 👍' : 'يحتاج لمتابعة ⚠️';
+
+    const isPaid = data.subscriptions.some((s) => s.studentId === std.id && s.month === curMonth && s.isPaid);
+
+    setIsGeneratingAINote(true);
+    try {
+      const generated = await fetchAIRecommendation({
+        studentName: std.name,
+        studentCode: std.code,
+        groupName: grp ? grp.name : 'مجموعة عامة',
+        attendanceRate: attRate,
+        attendedSessions: stdAtt.length,
+        totalSessions,
+        academicAverage: avgScore,
+        averageGradeLabel: gradeLabel,
+        isSubscriptionPaid: isPaid,
+        examsList: stdExamResults.map((e) => ({
+          title: e.exam.title,
+          score: e.result.score,
+          maxScore: e.exam.maxScore,
+          percentage: Math.round((e.result.score / e.exam.maxScore) * 100),
+        })),
+      });
+
+      setCustomAINote(generated);
+      await handleRegenerateWithNote(generated);
+    } catch (err) {
+      console.error('AI Recommendation Error:', err);
+    } finally {
+      setIsGeneratingAINote(false);
     }
   };
 
@@ -859,6 +960,53 @@ export default function StudentsDirectoryPage() {
                 alt="Monthly Report Card"
                 className="w-full h-auto object-contain rounded-xl"
               />
+            </div>
+
+            {/* Smart AI Recommendation Panel */}
+            <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-emerald-500/20 text-right space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black text-emerald-400 flex items-center gap-1.5">
+                  <BrainCircuit className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>توصية المعلمة الذكية (GPT-4o AI):</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleGenerateAIRecommendation}
+                  disabled={isGeneratingAINote}
+                  className="px-3 py-1 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-[11px] flex items-center gap-1 shadow-md transition active:scale-95 disabled:opacity-50"
+                >
+                  {isGeneratingAINote ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <span>جاري التحليل والصياغة...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="w-3 h-3 text-amber-300" />
+                      <span>صياغة توصية ذكية بالذكاء الاصطناعي ✨</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={customAINote}
+                  onChange={(e) => setCustomAINote(e.target.value)}
+                  placeholder="يمكنك كتابة أو تعديل التوصية هنا ثم تطبيقها على الشهادة..."
+                  className="flex-1 px-3 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-emerald-500"
+                />
+                {customAINote && (
+                  <button
+                    type="button"
+                    onClick={() => handleRegenerateWithNote(customAINote)}
+                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-300 text-xs font-bold transition"
+                  >
+                    تطبيق على الشهادة 🔄
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 pt-2">
