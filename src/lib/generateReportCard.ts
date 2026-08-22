@@ -335,10 +335,12 @@ export async function generateStudentReportCardCanvas(params: {
   const displayedExams = examResults.slice(0, 5); // display up to 5 exams
 
   if (displayedExams.length === 0) {
+    ctx.save();
     ctx.fillStyle = '#94a3b8';
     ctx.font = '16px Cairo, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('لا توجد نتائج امتحانات مرصودة لهذا الطالب في هذا الشهر بعد', width / 2, curRowY + 50);
+    ctx.restore();
     curRowY += 100;
   } else {
     displayedExams.forEach((er, i) => {
@@ -351,6 +353,8 @@ export async function generateStudentReportCardCanvas(params: {
       // Exam Title
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 14px Cairo, sans-serif';
+      ctx.direction = 'rtl';
+      ctx.textAlign = 'right';
       const title = er.exam.title.length > 22 ? er.exam.title.slice(0, 22) + '...' : er.exam.title;
       ctx.fillText(title, width - 85, curRowY + 32);
 
@@ -380,6 +384,8 @@ export async function generateStudentReportCardCanvas(params: {
   // 6. Teacher Note & Signature Section (Bottom of Certificate)
   const footerY = 960;
   ctx.save();
+  ctx.direction = 'rtl';
+  ctx.textAlign = 'right';
   ctx.fillStyle = 'rgba(16, 185, 129, 0.06)';
   ctx.strokeStyle = 'rgba(52, 211, 153, 0.25)';
   ctx.lineWidth = 1.5;
@@ -390,11 +396,11 @@ export async function generateStudentReportCardCanvas(params: {
 
   // Teacher Endorsement Quote Header
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 17px Cairo, sans-serif';
-  ctx.fillText('💬 كلمة وتوجيه المعلمة لولي الأمر:', width - 90, footerY + 40);
+  ctx.font = 'bold 18px Cairo, sans-serif';
+  ctx.fillText('💬 كلمة وتوجيه المعلمة لولي الأمر:', width - 95, footerY + 42);
 
   ctx.fillStyle = '#cbd5e1';
-  ctx.font = '13px Cairo, sans-serif';
+  ctx.font = '14px Cairo, sans-serif';
   const customComment = customNote?.trim() || (
     avgPercent >= 85
       ? `نبارك لولي الأمر على تفوق الطالب (${student.name}) والتزامه المتميز في الحصص والامتحانات، ونتمنى له دوام النجاح.`
@@ -402,7 +408,7 @@ export async function generateStudentReportCardCanvas(params: {
   );
 
   // Dynamic Word-Wrapping with max width leaving room for the left stamp
-  const maxNoteWidth = 510;
+  const maxNoteWidth = 500;
   const words = customComment.split(' ');
   const wrappedLines: string[] = [];
   let curLine = '';
@@ -419,20 +425,20 @@ export async function generateStudentReportCardCanvas(params: {
   if (curLine) wrappedLines.push(curLine);
 
   wrappedLines.slice(0, 3).forEach((line, idx) => {
-    ctx.fillText(line, width - 90, footerY + 68 + idx * 22);
+    ctx.fillText(line, width - 95, footerY + 74 + idx * 24);
   });
 
   // Signatures & Official Stamp
-  const signY = footerY + 150;
+  const signY = footerY + 160;
 
   // Teacher Name
   ctx.fillStyle = '#34d399';
-  ctx.font = 'bold 17px Cairo, sans-serif';
-  ctx.fillText(`معلمة المادة: ${teacherName}`, width - 90, signY);
+  ctx.font = 'bold 18px Cairo, sans-serif';
+  ctx.fillText(`معلمة المادة: ${teacherName}`, width - 95, signY);
 
   ctx.fillStyle = '#94a3b8';
-  ctx.font = '12px Cairo, sans-serif';
-  ctx.fillText('توقيع واعتماد الأكاديمية ✍️', width - 90, signY + 26);
+  ctx.font = '13px Cairo, sans-serif';
+  ctx.fillText('توقيع واعتماد الأكاديمية ✍️', width - 95, signY + 28);
 
   // Official Gold Stamp Graphic (Left Side)
   const stampX = 140;
