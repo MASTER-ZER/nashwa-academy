@@ -413,4 +413,59 @@ ${changedList.join('\n')}
   return sendTelegramMessage(messageText, inlineKeyboard);
 }
 
+export async function notifyOnlineExamSubmittedToTelegram(params: {
+  student: Student;
+  groupName?: string;
+  examTitle: string;
+  score: number;
+  maxScore: number;
+  percentage: number;
+  timeSpentSeconds: number;
+}) {
+  const { student, groupName, examTitle, score, maxScore, percentage, timeSpentSeconds } = params;
+  const cleanParentPhone = student.parentPhone.replace(/\D/g, '').replace(/^0/, '20');
+
+  const minutes = Math.floor(timeSpentSeconds / 60);
+  const seconds = timeSpentSeconds % 60;
+  const timeFormatted = minutes > 0 ? `${minutes} دقيقة و ${seconds} ثانية` : `${seconds} ثانية`;
+
+  const gradeEmoji = percentage >= 85 ? '🌟 ممتاز (تفوق)' : percentage >= 70 ? '🟢 جيد جداً' : percentage >= 50 ? '🟡 مقبول' : '🔴 يحتاج لمتابعة';
+
+  const messageText = `
+🎯 <b>طالب أكمل اختباراً أونلاين جديد!</b>
+━━━━━━━━━━━━━━━━━
+👤 <b>اسم الطالب:</b> ${escapeHtml(student.name)}
+🔢 <b>كود الطالب:</b> <code>#${escapeHtml(student.code)}</code>
+⏰ <b>المجموعة:</b> ${escapeHtml(groupName || 'العلوم المتكاملة')}
+
+📝 <b>عنوان الاختبار:</b> ${escapeHtml(examTitle)}
+🏆 <b>النتيجة المحققة:</b> <b>${score} من ${maxScore}</b> (${percentage}%)
+📊 <b>التقدير:</b> ${gradeEmoji}
+⏱️ <b>الوقت المستغرق:</b> <b>${timeFormatted}</b>
+📅 <b>التوقيت:</b> ${new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
+━━━━━━━━━━━━━━━━━
+💡 <i>تم رصد الدرجة تلقائياً وتحديث كشف درجات الطالب والتقرير الشهري بنجاح.</i>
+`;
+
+  const inlineKeyboard = {
+    inline_keyboard: [
+      [
+        {
+          text: '📊 لوحة درجات الامتحانات',
+          url: 'https://nashwa-academy.vercel.app/dashboard/exams',
+        },
+        {
+          text: '💬 إرسال النتيجة لواتساب ولي الأمر',
+          url: `https://wa.me/${cleanParentPhone}?text=${encodeURIComponent(
+            `أهلاً بحضرتك أستاذ ${student.parentName}، نحيطكم علماً بأن الطالب (${student.name}) أتم اختبار (${examTitle}) أونلاين عبر منصة أكاديمية مس نشوى، وحصل على (${score}/${maxScore}) بنسبة ${percentage}% في زمن (${timeFormatted}). مع تمنياتنا له بدوام التفوق 🌸`
+          )}`,
+        },
+      ],
+    ],
+  };
+
+  return sendTelegramMessage(messageText, inlineKeyboard);
+}
+
+
 

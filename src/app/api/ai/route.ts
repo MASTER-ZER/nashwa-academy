@@ -101,36 +101,55 @@ export async function POST(req: NextRequest) {
 
     // --- Action 2: Science Quiz & Exam Generator ---
     if (action === 'GENERATE_QUIZ') {
-      const { topic, questionCount = 5, difficulty = 'MEDIUM' } = params;
+      const qCount = Number(params.questionCount) || 5;
+      const topic = params.topic || 'العلوم المتكاملة';
+      const difficulty = params.difficulty || 'MEDIUM';
+      const targetMaxScore = Number(params.maxScore) || (qCount * 4);
 
       const difficultyMap: Record<string, string> = {
-        EASY: 'مباشر وتذكر للمفاهيم الأساسية',
-        MEDIUM: 'فهم وتطبيق واستنتاج متوسط',
-        HARD: 'مستويات تفكير عليا وحل مشكلات علمية',
-        CHALLENGE: 'أسئلة تفوق وتحدي للأوائل',
+        EASY: 'مباشر وتذكر للمفاهيم الأساسية وتطبيقاتها الأولية',
+        MEDIUM: 'فهم وتطبيق واستنتاج وربط بين فروع العلوم المتكاملة',
+        HARD: 'مستويات تفكير عليا وتحليل وحل مشكلات بيئية وحيوية',
+        CHALLENGE: 'أسئلة تفوق وتحدي للأوائل وربط عميق بين الطاقة والمادة',
       };
 
-      const systemPrompt = `أنت موجه أول مادة العلوم المتكاملة للمرحلة الثانوية بوزارة التربية والتعليم في مصر.
-المطلوب إنشاء اختبار تفاعلي عالي الجودة للدرس المطلوب.
-الموضوع: "${topic}"
-عدد الأسئلة: ${questionCount}
-مستوى الصعوبة: ${difficultyMap[difficulty] || 'متوسط'}
+      const systemPrompt = `أنت الخبير الأول والموجه العام لمادة "العلوم المتكاملة" (Integrated Sciences) للصف الأول الثانوي بوزارة التربية والتعليم المصرية (المنهج الوزاري الحديث المعتمد).
 
-يجب أن تكون مخرجاتك بتنسيق JSON الصارم فقط (بدون كود markdown خارجي وبدون أي نصوص إضافية) بالهيكل التالي:
+🎯 مهمتك: إنشاء اختبار علمي نموذجي متكامل وعالي الدقة وفق المنهج الوزاري المصري المعتمد حصراً.
+
+📚 مواضيع ومحاور منهج العلوم المتكاملة للصف الأول الثانوي:
+1. [المحور الأول: الاستدامة والحياة]:
+   - النظام البيئي المائي والأنظمة البيئية (العوامل الحية وغير الحية، التكيف).
+   - السلاسل والشبكات الغذائية، تدوير المادة (دورة الكربون والنيتروجين والماء).
+   - الغلاف الجوي، التغيرات المناخية، الاحتباس الحراري، التلوث البيئي واستدامة الموارد.
+2. [المحور الثاني: الطاقة والمادة في النظم الحية]:
+   - الكيمياء الحيوية (الكربوهيدرات، الليبيدات، البروتينات، الأحماض النووية DNA و RNA).
+   - الخلية وعضياتها، الأيض الخلوي والإنزيمات، التنفس الخلوي وإنتاج جزيئات ATP.
+   - عملية البناء الضوئي في النباتات وتفاعلات الضوء والظلام.
+   - قوانين حفظ الطاقة وتطبيقات الديناميكا الحرارية في الكائنات الحية.
+
+⚠️ تعليمات صارمة جداً:
+1. عدد الأسئلة المطلوب بالضبط: (${qCount}) أسئلة. يجب أن يحتوي مصفوفة questions على (${qCount}) عنصراً تماماً دون زيادة أو نقصان.
+2. الدرجة الكلية للاختبار: (${targetMaxScore}) درجة.
+3. التزم حصراً بمنهج الصف الأول الثانوي للعلوم المتكاملة. لا تضع أي أسئلة فيزياء أو كيمياء قديمة ملغاة من مناهج السنوات السابقة.
+4. كل سؤال يحتوي على 4 خيارات حصرية وواضحة (أ، ب، ج، د)، مع تحديد الفهرس الصحيح (0 إلى 3) وشرح علمي مبسط وواضح لسبب الإجابة.
+5. يجب أن تكون المخرجات JSON صالحاً وصارماً بنسبة 100% بدون أي كود markdown أو نصوص خارج أقواس الـ JSON.
+
+الهيكل المطلوب:
 {
-  "title": "عنوان الاختبار",
+  "title": "اختبار مادة العلوم المتكاملة: ${topic}",
   "topic": "${topic}",
   "academicYear": "الصف الأول الثانوي",
-  "totalQuestions": ${questionCount},
-  "maxScore": ${questionCount * 4},
+  "totalQuestions": ${qCount},
+  "maxScore": ${targetMaxScore},
   "questions": [
     {
       "questionNumber": 1,
-      "questionText": "نص السؤال العلمي الواضح",
+      "questionText": "نص السؤال الدقيق من المنهج",
       "options": ["أ) خيار 1", "ب) خيار 2", "ج) خيار 3", "د) خيار 4"],
       "correctOptionIndex": 0,
       "correctAnswerText": "أ) خيار 1",
-      "explanation": "شرح علمي دقيق وموجز لسبب صحة هذه الإجابة"
+      "explanation": "شرح علمي دقيق لسبب صحة الإجابة"
     }
   ]
 }`;
@@ -138,7 +157,7 @@ export async function POST(req: NextRequest) {
       const rawReply = await callOpenAIWithCascade(
         [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: `ولد الاختبار الآن حول: ${topic}` },
+          { role: 'user', content: `ولد الاختبار الآن حول موضوع: ${topic} بعدد ${qCount} أسئلة ودرجة كلية ${targetMaxScore}.` },
         ],
         REASONING_CASCADE_MODELS,
         0.5
@@ -153,6 +172,8 @@ export async function POST(req: NextRequest) {
       }
 
       const parsedQuiz = JSON.parse(cleanJson.trim());
+      parsedQuiz.totalQuestions = parsedQuiz.questions?.length || qCount;
+      parsedQuiz.maxScore = targetMaxScore;
       return NextResponse.json({ success: true, quiz: parsedQuiz });
     }
 

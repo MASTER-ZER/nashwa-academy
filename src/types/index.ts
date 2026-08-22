@@ -58,6 +58,16 @@ export interface Subscription {
   receivedBy?: string;
 }
 
+export interface QuizQuestion {
+  questionNumber: number;
+  questionText: string;
+  options: string[];
+  correctOptionIndex: number;
+  correctAnswerText: string;
+  explanation?: string;
+  points?: number;
+}
+
 export interface Exam {
   id: string;
   title: string; // e.g. "اختبار الباب الأول - العلوم المتكاملة"
@@ -66,6 +76,10 @@ export interface Exam {
   date: string;
   academicYear: AcademicYear;
   groupId?: string; // Optional: specific to a group or all
+  isOnline?: boolean;
+  isPublished?: boolean;
+  durationSecondsPerQuestion?: number; // e.g. 15 or 20 seconds
+  questions?: QuizQuestion[];
 }
 
 export interface ExamResult {
@@ -77,6 +91,9 @@ export interface ExamResult {
   parentNotified: boolean;
   studentNotified: boolean;
   gradedAt: string;
+  timeSpentSeconds?: number;
+  answers?: number[];
+  isOnlineSubmission?: boolean;
 }
 
 export interface ProfileEditRequest {

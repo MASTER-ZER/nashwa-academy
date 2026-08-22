@@ -51,11 +51,14 @@ export default function ExamsDashboardPage() {
   // AI Quiz Generator States
   const [isAIQuizModalOpen, setIsAIQuizModalOpen] = useState(false);
   const [aiQuizTopic, setAiQuizTopic] = useState('الكيمياء الحيوية وعمليات الطاقة في الخلية');
-  const [aiQuizCount, setAiQuizCount] = useState<number>(5);
+  const [aiQuizCount, setAiQuizCount] = useState<number>(10);
+  const [aiQuizScore, setAiQuizScore] = useState<number>(40);
+  const [aiQuizTimerPerQuestion, setAiQuizTimerPerQuestion] = useState<number>(20);
   const [aiQuizDifficulty, setAiQuizDifficulty] = useState<'EASY' | 'MEDIUM' | 'HARD' | 'CHALLENGE'>('MEDIUM');
   const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
   const [generatedQuiz, setGeneratedQuiz] = useState<GeneratedQuizResult | null>(null);
   const [aiQuizError, setAiQuizError] = useState('');
+  const [isPreviewQuestionsModalOpen, setIsPreviewQuestionsModalOpen] = useState(false);
 
   // Scores input state
   const [scoresState, setScoresState] = useState<Record<string, { score: number; feedback: string }>>({});
@@ -201,10 +204,13 @@ export default function ExamsDashboardPage() {
     setIsGeneratingQuiz(true);
     setAiQuizError('');
     try {
+      const count = Number(aiQuizCount) || 10;
+      const score = Number(aiQuizScore) || (count * 4);
       const quiz = await fetchAIQuiz({
         topic: aiQuizTopic.trim(),
-        questionCount: Number(aiQuizCount) || 5,
+        questionCount: count,
         difficulty: aiQuizDifficulty,
+        maxScore: score,
       });
       setGeneratedQuiz(quiz);
       sound.playSuccessChime();
@@ -215,7 +221,7 @@ export default function ExamsDashboardPage() {
     }
   };
 
-  const handleAdoptAIQuiz = () => {
+  const handleAdoptAIQuiz = (publishOnline: boolean = true) => {
     if (!generatedQuiz) return;
     const exam = db.addExam({
       title: generatedQuiz.title,
@@ -223,6 +229,10 @@ export default function ExamsDashboardPage() {
       maxScore: generatedQuiz.maxScore,
       date: new Date().toISOString().split('T')[0],
       academicYear: 'FIRST_SEC',
+      isOnline: publishOnline,
+      isPublished: publishOnline,
+      durationSecondsPerQuestion: Number(aiQuizTimerPerQuestion) || 20,
+      questions: generatedQuiz.questions,
     });
 
     setSelectedExamId(exam.id);
@@ -233,6 +243,27 @@ export default function ExamsDashboardPage() {
     try {
       confetti({ particleCount: 60, spread: 70 });
     } catch {}
+  };
+
+  const handleTogglePublishExam = () => {
+    if (!selectedExam) return;
+    const updated = db.updateExam(selectedExam.id, {
+      isPublished: !selectedExam.isPublished,
+    });
+    if (updated) {
+      loadData();
+      sound.playSuccessChime();
+    }
+  };
+
+  const handleDeleteExam = () => {
+    if (!selectedExam) return;
+    if (confirm(`هل أنت متأكد من رغبتك في حذف اختبار "${selectedExam.title}"؟ سيتم حذف جميع درجات الطلاب المرتبطة به.`)) {
+      db.deleteExam(selectedExam.id);
+      setSelectedExamId('');
+      loadData();
+      sound.playSuccessChime();
+    }
   };
 
   const handleOpenParentWhatsApp = (student: Student, score: number) => {
@@ -391,6 +422,145 @@ export default function ExamsDashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Selected Exam Information & Online Controls */}
+      {selectedExam && (
+        <div className="liquid-glass rounded-3xl p-4 sm:p-5 shadow-sm border border-slate-200/80 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 no-print">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-black text-slate-900 dark:text-white">
+                {selectedExam.title}
+              </h2>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-black bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-cyan-400">
+                الدرجة: {selectedExam.maxScore}
+              </span>
+            </div>
+
+            {selectedExam.isOnline && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
+                <span>امتحان أونلاين تفاعلي 🌐</span>
+              </span>
+            )}
+
+            {selectedExam.durationSecondsPerQuestion && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800/60">
+                ⏱️ {selectedExam.durationSecondsPerQuestion} ثانية / سؤال
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {selectedExam.isOnline && (
+              <button
+                type="button"
+                onClick={handleTogglePublishExam}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs ${
+                  selectedExam.isPublished
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300'
+                }`}
+                title="تفعيل أو إخفاء الامتحان من بوابة الطلاب"
+              >
+                <span>{selectedExam.isPublished ? '🟢 منشور بالبوابة' : '🔒 معطل ومخفي'}</span>
+              </button>
+            )}
+
+            {selectedExam.questions && selectedExam.questions.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setIsPreviewQuestionsModalOpen(true)}
+                className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
+              >
+                <BookOpen className="w-3.5 h-3.5 text-cyan-500" />
+                <span>الأسئلة ({selectedExam.questions.length})</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleDeleteExam}
+              className="p-2 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/60 text-slate-400 hover:text-rose-600 transition"
+              title="حذف هذا الامتحان"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Live Online Exam Submissions Section */}
+      {selectedExam && (
+        <div className="liquid-glass rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 border border-cyan-500/30">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-2xl bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 flex items-center justify-center">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <span>حلول الطلاب التفاعلية أونلاين ⚡</span>
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-cyan-50 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-300">
+                    {data.examResults.filter(r => r.examId === selectedExamId && (r.isOnlineSubmission || (r.timeSpentSeconds && r.timeSpentSeconds > 0))).length} طالب أتم الحل
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  سجل حلول الطلاب المباشرة مع مدة الإجابة بالثواني والدقائق
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {data.examResults.filter(r => r.examId === selectedExamId && (r.isOnlineSubmission || (r.timeSpentSeconds && r.timeSpentSeconds > 0))).length === 0 ? (
+            <p className="text-xs text-slate-400 text-center py-4">
+              لم يقم أي طالب بحل هذا الاختبار أونلاين بعد. عند دخول الطلاب وحله ستظهر نتائجهم وأوقاتهم هنا فوراً.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {data.examResults
+                .filter(r => r.examId === selectedExamId && (r.isOnlineSubmission || (r.timeSpentSeconds && r.timeSpentSeconds > 0)))
+                .map((r) => {
+                  const std = data.students.find(s => s.id === r.studentId);
+                  if (!std) return null;
+                  const minutes = Math.floor((r.timeSpentSeconds || 0) / 60);
+                  const seconds = (r.timeSpentSeconds || 0) % 60;
+                  const timeFormatted = minutes > 0 ? `${minutes}د و ${seconds}ث` : `${seconds} ثانية`;
+                  const pct = Math.round((r.score / selectedExam.maxScore) * 100);
+
+                  return (
+                    <div key={r.id} className="p-3.5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-2.5 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-xs font-black text-slate-900 dark:text-white">{std.name}</h4>
+                          <p className="text-[10px] text-slate-400 font-mono">#{std.code}</p>
+                        </div>
+                        <div className="text-left">
+                          <span className="text-sm font-black font-mono text-emerald-600 dark:text-emerald-400">
+                            {r.score}/{selectedExam.maxScore}
+                          </span>
+                          <span className="text-[10px] text-slate-400 block font-bold">{pct}%</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800/80">
+                        <span className="flex items-center gap-1 font-bold">
+                          ⏱️ المستغرق: <span className="font-mono text-brand-600 dark:text-cyan-400">{timeFormatted}</span>
+                        </span>
+                        <button
+                          onClick={() => handleOpenParentWhatsApp(std, r.score)}
+                          className="text-emerald-600 dark:text-emerald-400 hover:underline font-bold flex items-center gap-1"
+                        >
+                          <Send className="w-3 h-3" />
+                          <span>إرسال واتساب</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* LEADERBOARD / HONOR BOARD TOP CARDS */}
       {rankedStudents.length > 0 && selectedExam && (
@@ -685,33 +855,71 @@ export default function ExamsDashboardPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300">عدد الأسئلة:</label>
                 <select
                   value={aiQuizCount}
-                  onChange={(e) => setAiQuizCount(Number(e.target.value))}
+                  onChange={(e) => {
+                    const c = Number(e.target.value);
+                    setAiQuizCount(c);
+                    setAiQuizScore(c * 4);
+                  }}
                   className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none"
                 >
-                  <option value={3}>3 أسئلة (اختبار قصير 12 درجة)</option>
-                  <option value={5}>5 أسئلة (اختبار حصة 20 درجة)</option>
-                  <option value={10}>10 أسئلة (اختبار شهري 40 درجة)</option>
+                  <option value={3}>3 أسئلة (اختبار سريع)</option>
+                  <option value={5}>5 أسئلة (اختبار حصة)</option>
+                  <option value={10}>10 أسئلة (اختبار شهري)</option>
+                  <option value={15}>15 سؤال (اختبار شامل)</option>
+                  <option value={20}>20 سؤال (نموذج امتحاني كامل)</option>
                 </select>
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">مستوى الصعوبة:</label>
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">الدرجة الكلية:</label>
                 <select
-                  value={aiQuizDifficulty}
-                  onChange={(e) => setAiQuizDifficulty(e.target.value as any)}
-                  className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none"
+                  value={aiQuizScore}
+                  onChange={(e) => setAiQuizScore(Number(e.target.value))}
+                  className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none font-mono"
                 >
-                  <option value="EASY">مباشر وتذكر للمفاهيم</option>
-                  <option value="MEDIUM">متوسط وتطبيق عملي</option>
-                  <option value="HARD">مستويات تفكير عليا</option>
-                  <option value="CHALLENGE">تحدي للمتفوقين 🏆</option>
+                  <option value={12}>12 درجة</option>
+                  <option value={20}>20 درجة</option>
+                  <option value={30}>30 درجة</option>
+                  <option value={40}>40 درجة (المعياري الوزاري)</option>
+                  <option value={50}>50 درجة</option>
+                  <option value={60}>60 درجة</option>
+                  <option value={100}>100 درجة</option>
                 </select>
               </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">عداد الإجابة (لكل سؤال):</label>
+                <select
+                  value={aiQuizTimerPerQuestion}
+                  onChange={(e) => setAiQuizTimerPerQuestion(Number(e.target.value))}
+                  className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none font-mono"
+                >
+                  <option value={15}>15 ثانية (سريع وحماسي ⚡)</option>
+                  <option value={20}>20 ثانية (موصى به 👍)</option>
+                  <option value={30}>30 ثانية (متوسط)</option>
+                  <option value={45}>45 ثانية (تفكير عميق)</option>
+                  <option value={60}>60 ثانية (دقيقة كاملة)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">مستوى الصعوبة والتفكير:</label>
+              <select
+                value={aiQuizDifficulty}
+                onChange={(e) => setAiQuizDifficulty(e.target.value as any)}
+                className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none"
+              >
+                <option value="EASY">مباشر وتذكر للمفاهيم الأساسية</option>
+                <option value="MEDIUM">متوسط وتطبيق واستنتاج وفق المنهج الوزاري</option>
+                <option value="HARD">مستويات تفكير عليا وربط المفاهيم البيئية والحيوية</option>
+                <option value="CHALLENGE">تحدي للمتفوقين والأوائل 🏆</option>
+              </select>
             </div>
 
             {aiQuizError && (
@@ -729,12 +937,12 @@ export default function ExamsDashboardPage() {
               {isGeneratingQuiz ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>جاري صياغة وتوليد أسئلة الامتحان بالذكاء الاصطناعي... ⏳</span>
+                  <span>جاري صياغة وتوليد أسئلة الامتحان بالذكاء الاصطناعي وفق منهج الوزارة... ⏳</span>
                 </>
               ) : (
                 <>
                   <Wand2 className="w-4 h-4 text-amber-300" />
-                  <span>توليد بنك الأسئلة الآن ✨</span>
+                  <span>توليد بنك الأسئلة الآن ({aiQuizCount} أسئلة بـ {aiQuizScore} درجة) ✨</span>
                 </>
               )}
             </button>
@@ -748,7 +956,7 @@ export default function ExamsDashboardPage() {
                     <span>{generatedQuiz.title}</span>
                   </h4>
                   <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">
-                    {generatedQuiz.maxScore} درجة ({generatedQuiz.totalQuestions} أسئلة)
+                    {generatedQuiz.maxScore} درجة ({generatedQuiz.totalQuestions} أسئلة) • ⏱️ {aiQuizTimerPerQuestion}ث/سؤال
                   </span>
                 </div>
 
@@ -786,27 +994,115 @@ export default function ExamsDashboardPage() {
                   ))}
                 </div>
 
-                <div className="pt-2 flex flex-wrap gap-2">
+                <div className="pt-2 flex flex-col sm:flex-row gap-2">
                   <button
                     type="button"
-                    onClick={handleAdoptAIQuiz}
-                    className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition flex items-center justify-center gap-1.5 shadow-md"
+                    onClick={() => handleAdoptAIQuiz(true)}
+                    className="flex-1 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-black text-xs transition flex items-center justify-center gap-1.5 shadow-md active:scale-95"
                   >
-                    <Check className="w-4 h-4" />
-                    <span>إضافة هذا الاختبار لسجل الامتحانات فوراً ✅</span>
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    <span>🚀 نشر كامتحان أونلاين تفاعلي للطلاب بالبوابة</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleAdoptAIQuiz(false)}
+                    className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition flex items-center justify-center gap-1.5 border border-slate-700"
+                  >
+                    <Check className="w-4 h-4 text-emerald-400" />
+                    <span>حفظ كاختبار ورقي عادي</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => window.print()}
-                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center gap-1.5"
+                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-1.5"
                   >
                     <Printer className="w-4 h-4 text-cyan-400" />
-                    <span>طباعة الأسئلة 🖨️</span>
+                    <span>طباعة 🖨️</span>
                   </button>
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Preview Questions Modal */}
+      {isPreviewQuestionsModalOpen && selectedExam && selectedExam.questions && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-2xl w-full shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto text-right animate-ios-spring">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  <span>بنك أسئلة: {selectedExam.title}</span>
+                </h3>
+                <p className="text-xs text-slate-500 font-bold">
+                  {selectedExam.questions.length} أسئلة • {selectedExam.maxScore} درجة • ⏱️ {selectedExam.durationSecondsPerQuestion || 20} ثانية لكل سؤال
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPreviewQuestionsModalOpen(false)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {selectedExam.questions.map((q, idx) => (
+                <div key={idx} className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-2">
+                  <p className="text-xs font-black text-slate-900 dark:text-white flex items-start gap-2">
+                    <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0 text-[11px] font-mono">
+                      {q.questionNumber || (idx + 1)}
+                    </span>
+                    <span>{q.questionText}</span>
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs pr-6">
+                    {q.options.map((opt, oIdx) => (
+                      <span
+                        key={oIdx}
+                        className={`p-2 rounded-xl border text-[11px] font-bold ${
+                          oIdx === q.correctOptionIndex
+                            ? 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                            : 'bg-white dark:bg-slate-900/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800'
+                        }`}
+                      >
+                        {opt} {oIdx === q.correctOptionIndex && '✅'}
+                      </span>
+                    ))}
+                  </div>
+
+                  {q.explanation && (
+                    <p className="text-[11px] text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-xl border border-amber-200 dark:border-amber-900/50 pr-6">
+                      💡 <strong>التفسير العلمي:</strong> {q.explanation}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-2 flex items-center justify-between border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-xs font-bold flex items-center gap-1.5"
+              >
+                <Printer className="w-4 h-4" />
+                <span>طباعة الأسئلة</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsPreviewQuestionsModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-brand-600 text-white text-xs font-bold"
+              >
+                إغلاق
+              </button>
+            </div>
           </div>
         </div>
       )}

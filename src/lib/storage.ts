@@ -399,27 +399,40 @@ class StorageService {
           ? subscriptionsData.map(dbToSubscription)
           : localData.subscriptions,
         exams: examsData && examsData.length > 0
-          ? examsData.map((e: any) => ({
-              id: e.id,
-              title: e.title,
-              date: e.date,
-              totalScore: Number(e.total_score || e.max_score || 20),
-              maxScore: Number(e.max_score || e.total_score || 20),
-              academicYear: e.academic_year,
-              groupId: e.group_id,
-            }))
+          ? examsData.map((e: any) => {
+              const localExam = localData.exams.find((lx) => lx.id === e.id);
+              return {
+                id: e.id,
+                title: e.title,
+                date: e.date,
+                totalScore: Number(e.total_score || e.max_score || 20),
+                maxScore: Number(e.max_score || e.total_score || 20),
+                academicYear: e.academic_year,
+                groupId: e.group_id,
+                isOnline: Boolean(e.is_online ?? localExam?.isOnline ?? (localExam?.questions && localExam.questions.length > 0)),
+                isPublished: Boolean(e.is_published ?? localExam?.isPublished ?? true),
+                durationSecondsPerQuestion: Number(e.duration_seconds_per_question || localExam?.durationSecondsPerQuestion || 20),
+                questions: e.questions || localExam?.questions || [],
+              };
+            })
           : localData.exams,
         examResults: resultsData && resultsData.length > 0
-          ? resultsData.map((r: any) => ({
-              id: r.id,
-              examId: r.exam_id,
-              studentId: r.student_id,
-              score: Number(r.score),
-              feedback: r.feedback || '',
-              parentNotified: Boolean(r.parent_notified),
-              studentNotified: Boolean(r.student_notified),
-              gradedAt: r.graded_at,
-            }))
+          ? resultsData.map((r: any) => {
+              const localRes = localData.examResults.find((lr) => lr.id === r.id || (lr.examId === r.exam_id && lr.studentId === r.student_id));
+              return {
+                id: r.id,
+                examId: r.exam_id,
+                studentId: r.student_id,
+                score: Number(r.score),
+                feedback: r.feedback || '',
+                parentNotified: Boolean(r.parent_notified),
+                studentNotified: Boolean(r.student_notified),
+                gradedAt: r.graded_at,
+                timeSpentSeconds: Number(r.time_spent_seconds || localRes?.timeSpentSeconds || 0),
+                answers: r.answers || localRes?.answers || [],
+                isOnlineSubmission: Boolean(r.is_online_submission ?? localRes?.isOnlineSubmission),
+              };
+            })
           : localData.examResults,
         settings: settingsData ? {
           teacherName: settingsData.teacher_name || DEFAULT_SETTINGS.teacherName,
@@ -1166,6 +1179,49 @@ class StorageService {
       this.enqueueOfflineSync({ table: 'exams', action: 'INSERT', payload });
     }
     return newExam;
+  }
+
+  public updateExam(examId: string, updates: Partial<Exam>): Exam | null {
+    const data = this.getData();
+    const index = data.exams.findIndex((e) => e.id === examId);
+    if (index === -1) return null;
+
+    data.exams[index] = {
+      ...data.exams[index],
+      ...updates,
+    };
+    this.saveData(data);
+
+    const payload: any = {
+      id: examId,
+      title: data.exams[index].title,
+      max_score: data.exams[index].maxScore,
+      total_score: data.exams[index].totalScore,
+      date: data.exams[index].date,
+    };
+
+    if (supabase && this.isOnline()) {
+      supabase.from('exams').update(payload).eq('id', examId).then(() => {}, (err) => {
+        this.enqueueOfflineSync({ table: 'exams', action: 'UPDATE', payload, matchKey: 'id', matchVal: examId });
+      });
+    } else {
+      this.enqueueOfflineSync({ table: 'exams', action: 'UPDATE', payload, matchKey: 'id', matchVal: examId });
+    }
+
+    return data.exams[index];
+  }
+
+  public deleteExam(examId: string): boolean {
+    const data = this.getData();
+    data.exams = data.exams.filter((e) => e.id !== examId);
+    data.examResults = data.examResults.filter((r) => r.examId !== examId);
+    this.saveData(data);
+
+    if (supabase && this.isOnline()) {
+      supabase.from('exams').delete().eq('id', examId).then(() => {});
+      supabase.from('exam_results').delete().eq('exam_id', examId).then(() => {});
+    }
+    return true;
   }
 
   public recordExamResult(resultData: Omit<ExamResult, 'id' | 'gradedAt'>): ExamResult {

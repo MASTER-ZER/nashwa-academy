@@ -48,6 +48,7 @@ import {
   CheckCheck,
   Trash2,
   Search,
+  BookOpen,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import QRCode from 'qrcode';
@@ -56,7 +57,7 @@ import { generateStudentCardCanvas } from '@/lib/generateCardImage';
 import { generateStudentReportCardCanvas } from '@/lib/generateReportCard';
 import DateWheelPicker from '@/components/DateWheelPicker';
 import { compressStudentPhoto } from '@/lib/imageCompressor';
-import { notifyStudentProfileUpdate, notifyProfileEditRequest } from '@/lib/telegram';
+import { notifyStudentProfileUpdate, notifyProfileEditRequest, notifyOnlineExamSubmittedToTelegram } from '@/lib/telegram';
 import { fetchStudentAIChat, ChatMessage } from '@/lib/ai';
 
 export default function StudentPortalPage() {
@@ -69,13 +70,29 @@ export default function StudentPortalPage() {
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [examResults, setExamResults] = useState<{ result: ExamResult; exam: Exam }[]>([]);
+  const [allExams, setAllExams] = useState<Exam[]>([]);
 
-  const [activeTab, setActiveTab] = useState<'CARD' | 'REPORT' | 'AI_TUTOR' | 'ATTENDANCE' | 'SUBSCRIPTION' | 'EXAMS' | 'EDIT'>('CARD');
+  const [activeTab, setActiveTab] = useState<'CARD' | 'REPORT' | 'AI_TUTOR' | 'ONLINE_EXAMS' | 'ATTENDANCE' | 'SUBSCRIPTION' | 'EXAMS' | 'EDIT'>('CARD');
   const [errorMsg, setErrorMsg] = useState('');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [cardDisplayType, setCardDisplayType] = useState<'QR' | 'BARCODE'>('QR');
   const [copiedMsg, setCopiedMsg] = useState(false);
   const [isDownloadingImage, setIsDownloadingImage] = useState(false);
+
+  // Online Exam Player States
+  const [activeOnlineExam, setActiveOnlineExam] = useState<Exam | null>(null);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
+  const [questionTimer, setQuestionTimer] = useState<number>(20);
+  const [examTimeSpentSeconds, setExamTimeSpentSeconds] = useState<number>(0);
+  const [isExamCompleted, setIsExamCompleted] = useState<boolean>(false);
+  const [completedExamResult, setCompletedExamResult] = useState<{
+    score: number;
+    maxScore: number;
+    percentage: number;
+    timeSpent: number;
+  } | null>(null);
+  const [reviewExamModal, setReviewExamModal] = useState<Exam | null>(null);
 
   // Nashwa AI Science Tutor Chat State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -223,6 +240,128 @@ export default function StudentPortalPage() {
       .filter(Boolean) as { result: ExamResult; exam: Exam }[];
 
     setExamResults(results);
+    setAllExams(data.exams);
+  };
+
+  // Online Exam Countdown Timer Effect
+  useEffect(() => {
+    if (!activeOnlineExam || isExamCompleted) return;
+
+    const duration = activeOnlineExam.durationSecondsPerQuestion || 20;
+    const timerInterval = setInterval(() => {
+      setQuestionTimer((prev) => {
+        if (prev <= 1) {
+          // Auto advance or submit
+          const nextIdx = currentQuestionIndex + 1;
+          const totalQ = activeOnlineExam.questions?.length || 1;
+          if (nextIdx < totalQ) {
+            setCurrentQuestionIndex(nextIdx);
+            sound.playInfoSound();
+            return duration;
+          } else {
+            handleSubmitOnlineExam();
+            return 0;
+          }
+        }
+        if (prev === 6) {
+          sound.playWarningAlert();
+        }
+        return prev - 1;
+      });
+      setExamTimeSpentSeconds((prev) => prev + 1);
+    }, 1000);
+
+    return () => clearInterval(timerInterval);
+  }, [activeOnlineExam, currentQuestionIndex, isExamCompleted, selectedAnswers]);
+
+  const handleStartOnlineExam = (exam: Exam) => {
+    if (!exam.questions || exam.questions.length === 0) {
+      alert('لم يتم إضافة أسئلة لهذا الامتحان بعد.');
+      return;
+    }
+    sound.unlockAudio();
+    sound.playSuccessChime();
+    setActiveOnlineExam(exam);
+    setCurrentQuestionIndex(0);
+    setSelectedAnswers({});
+    setQuestionTimer(exam.durationSecondsPerQuestion || 20);
+    setExamTimeSpentSeconds(0);
+    setIsExamCompleted(false);
+    setCompletedExamResult(null);
+  };
+
+  const handleSelectOption = (optionIndex: number) => {
+    sound.unlockAudio();
+    setSelectedAnswers((prev) => ({
+      ...prev,
+      [currentQuestionIndex]: optionIndex,
+    }));
+  };
+
+  const handleNextQuestion = () => {
+    if (!activeOnlineExam) return;
+    const questions = activeOnlineExam.questions || [];
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex((prev) => prev + 1);
+      setQuestionTimer(activeOnlineExam.durationSecondsPerQuestion || 20);
+      sound.playInfoSound();
+    } else {
+      handleSubmitOnlineExam();
+    }
+  };
+
+  const handleSubmitOnlineExam = (explicitAnswers?: Record<number, number>) => {
+    if (!activeOnlineExam || !currentStudent) return;
+    const answersMap = explicitAnswers || selectedAnswers;
+    const questions = activeOnlineExam.questions || [];
+    const pointsPerQuestion = activeOnlineExam.maxScore / (questions.length || 1);
+    let earnedScore = 0;
+
+    questions.forEach((q, idx) => {
+      if (answersMap[idx] === q.correctOptionIndex) {
+        earnedScore += pointsPerQuestion;
+      }
+    });
+
+    const finalScore = Math.round(earnedScore);
+    const percentage = Math.round((finalScore / activeOnlineExam.maxScore) * 100);
+
+    db.recordExamResult({
+      examId: activeOnlineExam.id,
+      studentId: currentStudent.id,
+      score: finalScore,
+      feedback: `حل إلكتروني أونلاين (${percentage}%)`,
+      parentNotified: false,
+      studentNotified: true,
+      timeSpentSeconds: examTimeSpentSeconds,
+      answers: questions.map((_, i) => answersMap[i] ?? -1),
+      isOnlineSubmission: true,
+    });
+
+    setIsExamCompleted(true);
+    setCompletedExamResult({
+      score: finalScore,
+      maxScore: activeOnlineExam.maxScore,
+      percentage,
+      timeSpent: examTimeSpentSeconds,
+    });
+
+    sound.playSuccessChime();
+    try {
+      confetti({ particleCount: 80, spread: 80, origin: { y: 0.5 } });
+    } catch {}
+
+    notifyOnlineExamSubmittedToTelegram({
+      student: currentStudent,
+      groupName: group?.name,
+      examTitle: activeOnlineExam.title,
+      score: finalScore,
+      maxScore: activeOnlineExam.maxScore,
+      percentage,
+      timeSpentSeconds: examTimeSpentSeconds,
+    });
+
+    loadStudentData(currentStudent.code);
   };
 
   const handleGenerateReport = async (studentToReport?: Student) => {
@@ -784,10 +923,11 @@ export default function StudentPortalPage() {
           </div>
 
           {/* Navigation Tabs (Segmented Controls) */}
-          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-1.5 p-1.5 rounded-2xl liquid-glass border border-slate-200/80 dark:border-slate-800 no-print">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-1.5 p-1.5 rounded-2xl liquid-glass border border-slate-200/80 dark:border-slate-800 no-print">
             {[
               { id: 'CARD', label: 'كارت الهوية', icon: QrCode },
               { id: 'AI_TUTOR', label: 'Master AI 🤖⚡', icon: Bot, isSpecial: true },
+              { id: 'ONLINE_EXAMS', label: 'امتحانات أونلاين 📝⚡', icon: Zap, isSpecial: true },
               { id: 'REPORT', label: 'التقرير الشهري', icon: FileText },
               { id: 'ATTENDANCE', label: `الحضور (${attendance.length})`, icon: CalendarCheck },
               { id: 'EXAMS', label: `الدرجات (${examResults.length})`, icon: Award },
@@ -1093,6 +1233,375 @@ export default function StudentPortalPage() {
                   <Send className="w-4 h-4" />
                 </button>
               </form>
+            </div>
+          )}
+
+          {/* TAB: Online Interactive Exams & Tests */}
+          {activeTab === 'ONLINE_EXAMS' && (
+            <div className="space-y-6 animate-ios-spring">
+              {/* If active exam in progress */}
+              {activeOnlineExam ? (
+                isExamCompleted && completedExamResult ? (
+                  /* EXAM COMPLETED CELEBRATION CARD */
+                  <div className="liquid-glass rounded-3xl p-6 sm:p-8 text-center space-y-6 max-w-lg mx-auto border border-emerald-500/40 shadow-2xl bg-gradient-to-b from-emerald-500/10 via-transparent to-teal-500/10">
+                    <div className="w-20 h-20 rounded-full bg-emerald-500/20 text-emerald-400 mx-auto flex items-center justify-center border border-emerald-500/30 text-3xl shadow-lg shadow-emerald-500/20 animate-bounce">
+                      🏆
+                    </div>
+
+                    <div className="space-y-2">
+                      <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+                        أحسنت يا بطل! تم تسليم الامتحان بنجاح 🎉
+                      </h2>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {activeOnlineExam.title} • تم حفظ الدرجة وإرسال تقرير فوري لمس نشوى
+                      </p>
+                    </div>
+
+                    <div className="p-5 rounded-2xl bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+                      <div className="text-3xl sm:text-4xl font-black font-mono text-emerald-600 dark:text-emerald-400">
+                        {completedExamResult.score} / {completedExamResult.maxScore}
+                      </div>
+                      <div className="flex items-center justify-center gap-3 text-xs font-bold">
+                        <span className="px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+                          النسبة: {completedExamResult.percentage}%
+                        </span>
+                        <span className="px-3 py-1 rounded-full bg-cyan-50 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-300 font-mono">
+                          ⏱️ المستغرق: {Math.floor(completedExamResult.timeSpent / 60)}د و {completedExamResult.timeSpent % 60}ث
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setReviewExamModal(activeOnlineExam)}
+                        className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-black text-xs transition flex items-center justify-center gap-1.5 shadow-md active:scale-95"
+                      >
+                        <BookOpen className="w-4 h-4" />
+                        <span>مراجعة الإجابات والتفسير العلمي 📖</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveOnlineExam(null);
+                          setIsExamCompleted(false);
+                        }}
+                        className="py-3 px-5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold text-xs transition active:scale-95"
+                      >
+                        العودة لقائمة الامتحانات
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* ACTIVE QUIZ PLAYER WITH COUNTDOWN TIMER */
+                  <div className="max-w-2xl mx-auto space-y-4">
+                    {/* Header bar with timer and question count */}
+                    <div className="liquid-glass rounded-3xl p-4 sm:p-5 shadow-sm border border-brand-500/30 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-8 h-8 rounded-xl bg-brand-500/20 text-brand-600 dark:text-cyan-400 flex items-center justify-center font-black text-xs">
+                            {currentQuestionIndex + 1}
+                          </span>
+                          <div>
+                            <h3 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
+                              {activeOnlineExam.title}
+                            </h3>
+                            <p className="text-[10px] text-slate-400 font-bold">
+                              السؤال ({currentQuestionIndex + 1}) من إجمالي ({activeOnlineExam.questions?.length || 0}) أسئلة
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Live Countdown Badge */}
+                        <div className={`px-3 py-1.5 rounded-2xl flex items-center gap-1.5 font-mono font-black text-xs shadow-xs transition-all ${
+                          questionTimer <= 5
+                            ? 'bg-rose-500 text-white animate-pulse'
+                            : questionTimer <= 10
+                            ? 'bg-amber-500 text-white'
+                            : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border border-emerald-500/40'
+                        }`}>
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>{questionTimer} ثانية ⏱️</span>
+                        </div>
+                      </div>
+
+                      {/* Smooth Animated Countdown Progress Bar */}
+                      <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-1000 ease-linear rounded-full ${
+                            questionTimer <= 5
+                              ? 'bg-rose-500'
+                              : questionTimer <= 10
+                              ? 'bg-amber-500'
+                              : 'bg-emerald-500'
+                          }`}
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              Math.max(
+                                0,
+                                (questionTimer / (activeOnlineExam.durationSecondsPerQuestion || 20)) * 100
+                              )
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Question Card */}
+                    {activeOnlineExam.questions && activeOnlineExam.questions[currentQuestionIndex] && (
+                      <div className="liquid-glass rounded-3xl p-5 sm:p-7 shadow-lg space-y-5 border border-slate-200/80 dark:border-slate-800">
+                        <div className="space-y-1.5">
+                          <span className="text-[11px] font-black text-brand-600 dark:text-cyan-400 uppercase tracking-wider">
+                            سؤال اختر الإجابة الصحيحة:
+                          </span>
+                          <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-white leading-relaxed">
+                            {activeOnlineExam.questions[currentQuestionIndex].questionText}
+                          </h4>
+                        </div>
+
+                        {/* 4 Options Grid */}
+                        <div className="space-y-2.5 pt-2">
+                          {activeOnlineExam.questions[currentQuestionIndex].options.map((opt, oIdx) => {
+                            const isSelected = selectedAnswers[currentQuestionIndex] === oIdx;
+                            const optionLetters = ['أ', 'ب', 'ج', 'د'];
+                            return (
+                              <button
+                                key={oIdx}
+                                type="button"
+                                onClick={() => handleSelectOption(oIdx)}
+                                className={`w-full p-4 rounded-2xl text-right transition-all flex items-center justify-between gap-3 active:scale-[0.98] border ${
+                                  isSelected
+                                    ? 'bg-gradient-to-r from-brand-600/20 to-cyan-500/20 border-brand-500 text-brand-900 dark:text-cyan-200 shadow-md font-black'
+                                    : 'bg-white/80 dark:bg-slate-900/80 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/80 font-bold'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <span className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold text-xs ${
+                                    isSelected
+                                      ? 'bg-brand-600 text-white'
+                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                                  }`}>
+                                    {optionLetters[oIdx] || (oIdx + 1)}
+                                  </span>
+                                  <span className="text-xs sm:text-sm">{opt}</span>
+                                </div>
+
+                                {isSelected && (
+                                  <span className="w-6 h-6 rounded-full bg-brand-600 text-white flex items-center justify-center shrink-0 text-xs">
+                                    ✓
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="pt-4 flex items-center justify-between border-t border-slate-100 dark:border-slate-800">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm('هل تريد إلغاء الامتحان والعودة؟ لن يتم حفظ إجاباتك.')) {
+                                setActiveOnlineExam(null);
+                              }
+                            }}
+                            className="text-xs font-bold text-slate-400 hover:text-rose-500 transition"
+                          >
+                            انسحاب من الاختبار
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={handleNextQuestion}
+                            disabled={selectedAnswers[currentQuestionIndex] === undefined}
+                            className={`px-6 py-3 rounded-2xl font-black text-xs transition flex items-center gap-2 shadow-md active:scale-95 ${
+                              selectedAnswers[currentQuestionIndex] === undefined
+                                ? 'bg-slate-300 dark:bg-slate-800 text-slate-500 cursor-not-allowed opacity-60'
+                                : currentQuestionIndex === (activeOnlineExam.questions?.length || 1) - 1
+                                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:from-emerald-500'
+                                : 'bg-gradient-to-r from-brand-600 to-cyan-500 text-white hover:from-brand-500'
+                            }`}
+                          >
+                            <span>
+                              {currentQuestionIndex === (activeOnlineExam.questions?.length || 1) - 1
+                                ? 'تسليم وإنهاء الامتحان ✅'
+                                : 'السؤال التالي ⏩'}
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              ) : (
+                /* LIST OF AVAILABLE ONLINE EXAMS */
+                <div className="liquid-glass rounded-3xl p-6 shadow-sm space-y-5">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-200/60 dark:border-slate-800 pb-4">
+                    <div>
+                      <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                        <Zap className="w-5 h-5 text-amber-500" />
+                        <span>منصة الاختبارات التفاعلية الأونلاين ⚡</span>
+                      </h2>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        اختبارات تفاعلية مدعومة بالذكاء الاصطناعي مع عداد زمني ورصد فوري للدرجات
+                      </p>
+                    </div>
+                  </div>
+
+                  {allExams.filter((e) => e.isOnline && e.isPublished !== false).length === 0 ? (
+                    <div className="text-center py-12 text-slate-400 space-y-2">
+                      <Zap className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600" />
+                      <p className="text-xs font-bold">لا توجد اختبارات أونلاين منشورة حالياً</p>
+                      <p className="text-[11px] text-slate-500">تابع مع مس نشوى لمواعيد نشر الاختبارات القادمة 🌸</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {allExams
+                        .filter((e) => e.isOnline && e.isPublished !== false)
+                        .map((exam) => {
+                          const existingRes = examResults.find((er) => er.exam.id === exam.id);
+                          const isSolved = !!existingRes;
+                          const pct = existingRes
+                            ? Math.round((existingRes.result.score / exam.maxScore) * 100)
+                            : 0;
+
+                          return (
+                            <div
+                              key={exam.id}
+                              className={`p-5 rounded-3xl border transition-all space-y-4 shadow-sm ${
+                                isSolved
+                                  ? 'bg-white/80 dark:bg-slate-900/80 border-emerald-500/30'
+                                  : 'bg-white/90 dark:bg-slate-900/90 border-brand-500/30 hover:border-brand-500 shadow-md'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="space-y-1">
+                                  <h3 className="font-black text-slate-900 dark:text-white text-sm flex items-center gap-1.5">
+                                    <BookOpen className="w-4 h-4 text-brand-600 dark:text-cyan-400" />
+                                    <span>{exam.title}</span>
+                                  </h3>
+                                  <p className="text-[11px] text-slate-400 font-bold">
+                                    {exam.questions?.length || 0} أسئلة • {exam.maxScore} درجة • ⏱️ {exam.durationSecondsPerQuestion || 20} ث/سؤال
+                                  </p>
+                                </div>
+
+                                {isSolved ? (
+                                  <span className="px-2.5 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold text-xs flex items-center gap-1">
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>{existingRes.result.score}/{exam.maxScore} ({pct}%)</span>
+                                  </span>
+                                ) : (
+                                  <span className="px-2.5 py-1 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold text-xs">
+                                    جديد ومتاح ⚡
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="pt-2 flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800">
+                                {isSolved ? (
+                                  <>
+                                    <span className="text-[11px] text-slate-500 font-bold">
+                                      تم حل الاختبار ورصد درجتك ✅
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setReviewExamModal(exam)}
+                                      className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1 transition"
+                                    >
+                                      <BookOpen className="w-3.5 h-3.5 text-cyan-500" />
+                                      <span>مراجعة الإجابات</span>
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartOnlineExam(exam)}
+                                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-black text-xs transition flex items-center justify-center gap-2 shadow-md active:scale-95"
+                                  >
+                                    <Zap className="w-4 h-4 text-amber-300" />
+                                    <span>بدء الاختبار التفاعلي الآن 🚀</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Model Answer Review Modal */}
+          {reviewExamModal && reviewExamModal.questions && (
+            <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-2xl w-full shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto text-right animate-ios-spring">
+                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                      <BookOpen className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                      <span>الإجابات النموذجية: {reviewExamModal.title}</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 font-bold">
+                      {reviewExamModal.questions.length} أسئلة • الدرجة النهائية: {reviewExamModal.maxScore}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReviewExamModal(null)}
+                    className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {reviewExamModal.questions.map((q, idx) => (
+                    <div key={idx} className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-2">
+                      <p className="text-xs font-black text-slate-900 dark:text-white flex items-start gap-2">
+                        <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0 text-[11px] font-mono">
+                          {q.questionNumber || (idx + 1)}
+                        </span>
+                        <span>{q.questionText}</span>
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs pr-6">
+                        {q.options.map((opt, oIdx) => (
+                          <span
+                            key={oIdx}
+                            className={`p-2 rounded-xl border text-[11px] font-bold ${
+                              oIdx === q.correctOptionIndex
+                                ? 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 font-black'
+                                : 'bg-white dark:bg-slate-900/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800'
+                            }`}
+                          >
+                            {opt} {oIdx === q.correctOptionIndex && '✅ (الإجابة الصحيحة)'}
+                          </span>
+                        ))}
+                      </div>
+
+                      {q.explanation && (
+                        <p className="text-[11px] text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-xl border border-amber-200 dark:border-amber-900/50 pr-6">
+                          💡 <strong>التفسير العلمي:</strong> {q.explanation}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pt-2 flex justify-end border-t border-slate-200 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setReviewExamModal(null)}
+                    className="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold transition"
+                  >
+                    إغلاق المراجعة
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
