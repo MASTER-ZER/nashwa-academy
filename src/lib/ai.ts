@@ -109,6 +109,9 @@ export async function fetchStudentAIChat(params: {
 
 // --- Smart Local Fallbacks ---
 function generateFallbackRecommendation(p: StudentRecommendationParams): string {
+  if (!p.examsList || p.examsList.length === 0 || p.academicAverage === 0) {
+    return `نرحب بالطالب (${p.studentName}) في بداية دراسة منهج العلوم المتكاملة 🌸. لم تُعقد اختبارات شهرية حتى الآن، ونحثه على الالتزام بحضور الحصص والتفوق في الاختبارات القادمة.`;
+  }
   if (p.academicAverage >= 85 && p.attendanceRate >= 80) {
     return `طالب متميز وملتزم للغاية بحضور الحصص ومتابعة التدريبات. أداؤه يعكس فهماً عميقاً لمفاهيم مادة العلوم المتكاملة. نوصي بالاستمرار على هذا المستوى الرائع للمنافسة على المركز الأول.`;
   }
