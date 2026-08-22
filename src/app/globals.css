@@ -226,3 +226,30 @@ html, body {
     display: none !important;
   }
 }
+
+/* Scanner Viewfinder & HTML5-QRCode CSS Fix */
+#qr-reader-target {
+  width: 100% !important;
+  border: none !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+#qr-reader-target video {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 280px !important;
+  max-height: 480px !important;
+  object-fit: cover !important;
+  border-radius: 1.25rem !important;
+}
+
+#qr-reader-target img,
+#qr-reader-target canvas {
+  display: none !important;
+}
+
+#qr-reader-target > div:first-child {
+  border: none !important;
+}
+
