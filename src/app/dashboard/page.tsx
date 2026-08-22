@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { db, getCurrentMonthLabel } from '@/lib/storage';
 import { sound } from '@/lib/audio';
 import { Student, Group, Subscription, SystemData } from '@/types';
+import { notifyDashboardActionToTelegram } from '@/lib/telegram';
 import Link from 'next/link';
 import { 
   Users, 
@@ -28,6 +29,7 @@ import {
   Share2,
   HelpCircle,
   MessageCircle,
+  CheckCheck,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -55,12 +57,22 @@ export default function DashboardOverviewPage() {
 
   const currentMonth = getCurrentMonthLabel();
   const subPrice = data.settings?.subscriptionPrice || 250;
-  const monthSubs = data.subscriptions.filter((s) => s.month === currentMonth);
-  const paidSubsCount = monthSubs.filter((s) => s.isPaid).length;
-  const totalSubRevenue = paidSubsCount * subPrice;
+  
+  // Real active students paid subscriptions for current month
+  const monthSubs = (data.subscriptions || []).filter(
+    (s) => s.month === currentMonth && s.isPaid && activeStudents.some((std) => std.id === s.studentId)
+  );
+  const paidSubsCount = monthSubs.length;
+  const totalSubRevenue = monthSubs.reduce((sum, s) => sum + (s.amount || subPrice), 0);
 
-  const handleApprove = (student: Student) => {
-    db.approveStudent(student.id);
+  const handleApprove = (student: Student, markPaid = false) => {
+    db.approveStudent(student.id, markPaid);
+    notifyDashboardActionToTelegram({
+      action: markPaid ? 'APPROVE_STUDENT_PAID' : 'APPROVE_STUDENT_UNPAID',
+      studentName: student.name,
+      studentCode: student.code,
+      telegramMessageId: student.telegramMessageId,
+    }).catch(() => {});
     sound.playSuccessChime();
     setApprovalToast({ name: student.name, code: student.code });
     setTimeout(() => setApprovalToast(null), 4500);
@@ -75,6 +87,12 @@ export default function DashboardOverviewPage() {
   const handleReject = (student: Student) => {
     if (confirm(`هل أنتِ متأكدة من رفض طلب الطالب (${student.name})؟`)) {
       db.rejectStudent(student.id);
+      notifyDashboardActionToTelegram({
+        action: 'REJECT_STUDENT',
+        studentName: student.name,
+        studentCode: student.code,
+        telegramMessageId: student.telegramMessageId,
+      }).catch(() => {});
       loadData();
     }
   };
@@ -259,17 +277,27 @@ export default function DashboardOverviewPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto justify-end">
                     <button
-                      onClick={() => handleApprove(std)}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs shadow-xs transition flex items-center gap-1"
+                      onClick={() => handleApprove(std, true)}
+                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs shadow-xs transition flex items-center gap-1"
+                      title="قبول وتفعيل اشتراك الشهر مدفوعاً"
+                    >
+                      <CheckCheck className="w-4 h-4" />
+                      <span>قبول + دفع ✅</span>
+                    </button>
+                    <button
+                      onClick={() => handleApprove(std, false)}
+                      className="px-3 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-700 active:scale-95 text-white font-bold text-xs shadow-xs transition flex items-center gap-1"
+                      title="قبول الحساب فقط والاشتراك معلق"
                     >
                       <Check className="w-4 h-4" />
-                      <span>قبول واعتماد الطالب ✅</span>
+                      <span>قبول فقط ⏳</span>
                     </button>
                     <button
                       onClick={() => handleReject(std)}
-                      className="px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 text-rose-600 dark:text-rose-400 font-bold text-xs transition"
+                      className="px-2.5 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 text-rose-600 dark:text-rose-400 font-bold text-xs transition"
+                      title="رفض الطلب"
                     >
                       <X className="w-4 h-4" />
                     </button>
